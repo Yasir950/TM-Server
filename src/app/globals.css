@@ -1,0 +1,162 @@
+@import "tailwindcss";
+
+/* True Meridian brand: blue + green on a white base */
+@theme inline {
+  --color-tm-blue: #1c75bc;
+  --color-tm-blue-dark: #155a91;
+  --color-tm-blue-light: #e8f1fa;
+  --color-tm-green: #39b54a;
+  --color-tm-green-light: #eaf7ec;
+  --color-tm-surface: #f7f9fc;
+  --color-tm-line: #eceff4;
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: #ffffff;
+  color: #1f2430;
+}
+
+/* Tailwind v4 resets buttons to the default cursor; give every clickable element a pointer */
+@layer base {
+  button:not(:disabled),
+  [role="button"],
+  a[href],
+  label:has(input),
+  select,
+  summary,
+  input[type="checkbox"],
+  input[type="radio"],
+  input[type="file"] {
+    cursor: pointer;
+  }
+  button:disabled {
+    cursor: not-allowed;
+  }
+}
+
+/* Soft, thin scrollbars */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #d9dee6 transparent;
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-thumb {
+  background: #d9dee6;
+  border-radius: 8px;
+}
+
+@keyframes tm-fade-up {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes tm-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes tm-pop {
+  from { opacity: 0; transform: translateY(8px) scale(0.97); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes tm-slide-in {
+  from { opacity: 0; transform: translateX(16px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes tm-dot {
+  0%, 80%, 100% { opacity: 0.25; transform: translateY(0); }
+  40% { opacity: 1; transform: translateY(-2px); }
+}
+.tm-fade-up { animation: tm-fade-up 0.22s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.tm-fade { animation: tm-fade 0.18s ease-out both; }
+.tm-pop { animation: tm-pop 0.22s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.tm-slide-in { animation: tm-slide-in 0.25s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.tm-dot { animation: tm-dot 1.2s infinite; display: inline-block; }
+/* Flat surfaces: a hairline outline separates raised and floating panels (no shadows) */
+.tm-raised { outline: 1px solid var(--color-tm-line); outline-offset: -1px; }
+.tm-float { outline: 1px solid #e2e6ed; outline-offset: -1px; }
+@media (prefers-reduced-motion: reduce) {
+  .tm-fade-up, .tm-fade, .tm-pop, .tm-slide-in, .tm-dot { animation: none; }
+}
+
+/* Formatted message bodies and the rich composer share these */
+.tm-rich ul,
+.tm-rich ol {
+  margin: 2px 0;
+  padding-left: 1.6em;
+}
+.tm-rich ul { list-style: disc; }
+.tm-rich ul ul { list-style: circle; }
+.tm-rich ul ul ul { list-style: square; }
+.tm-rich ol { list-style: decimal; }
+.tm-rich ol ol { list-style: lower-alpha; }
+.tm-rich li > p { margin: 0; }
+.tm-rich blockquote { border-left: 3px solid #d4d4d8; padding-left: 10px; color: #52525b; }
+.tm-rich :not(pre) > code { font-family: var(--font-geist-mono); font-size: 0.85em; padding: 1px 4px; border-radius: 4px; background: #f4f4f5; border: 1px solid #e4e4e7; color: #c0392b; }
+.tm-rich pre { font-family: var(--font-geist-mono); font-size: 0.85em; padding: 8px 10px; margin: 4px 0; border-radius: 6px; background: #f8f8f8; border: 1px solid #e4e4e7; white-space: pre-wrap; }
+.tm-rich a { color: var(--color-tm-blue); }
+.tm-rich a:hover { text-decoration: underline; }
+
+/* .tm-editor wraps <EditorContent>; .ProseMirror is the editable (focusable) element inside it */
+.tm-editor .ProseMirror {
+  min-height: 44px;
+  max-height: 240px;
+  overflow-y: auto;
+  padding: 10px 12px;
+  font-size: 15px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.tm-editor .ProseMirror,
+.tm-editor .ProseMirror:focus,
+.tm-editor .ProseMirror:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+.tm-editor p { margin: 0; }
+.tm-editor p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  color: #a1a1aa;
+  pointer-events: none;
+}
+
+.tm-code {
+  font-family: var(--font-geist-mono);
+  font-size: 0.85em;
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: #f4f4f5;
+  border: 1px solid #e4e4e7;
+  color: #c0392b;
+}
+.tm-pre {
+  font-family: var(--font-geist-mono);
+  font-size: 0.85em;
+  padding: 8px 10px;
+  margin: 4px 0;
+  border-radius: 6px;
+  background: #f8f8f8;
+  border: 1px solid #e4e4e7;
+  white-space: pre-wrap;
+}
+.tm-quote {
+  border-left: 3px solid #d4d4d8;
+  padding-left: 10px;
+  color: #52525b;
+}
+.tm-link {
+  color: var(--color-tm-blue);
+}
+.tm-link:hover {
+  text-decoration: underline;
+}
+.tm-mention {
+  color: var(--color-tm-blue);
+  background: var(--color-tm-blue-light);
+  border-radius: 3px;
+  padding: 0 2px;
+  font-weight: 500;
+}
