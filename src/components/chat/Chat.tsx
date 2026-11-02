@@ -71,10 +71,16 @@ export default function Chat() {
 }
 
 function Empty() {
+  const { me } = useChat();
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
   return (
     <div className="tm-fade flex flex-1 flex-col items-center justify-center gap-4 text-zinc-500">
       <Logo height={56} />
-      <p className="text-sm">Pick a channel or start a direct message.</p>
+      <h2 className="text-xl font-semibold text-zinc-900">
+        {greeting}, {displayName(me).split(" ")[0]} 👋
+      </h2>
+      <p className="text-sm">Welcome back. Pick a channel or start a direct message.</p>
       <p className="text-xs text-zinc-400">
         Tip: press <kbd className="rounded-md border border-tm-line bg-tm-surface px-1.5 py-0.5 font-mono">Ctrl K</kbd> to jump anywhere
       </p>
