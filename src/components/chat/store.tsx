@@ -5,6 +5,7 @@ import type { Session } from "@supabase/supabase-js";
 import { supabase, displayName, inDnd, meetingEnd, meetingLive, mentionsMe, type Channel, type Company, type Meeting, type Member, type Membership, type Message, type Profile } from "@/lib/supabase";
 import { APP_NAME, call } from "@/lib/brand";
 import { timeOf } from "@/lib/format";
+import { AppSkeleton } from "../ui";
 
 type Unread = Record<string, { unread: number; mentions: number }>;
 // Keyed by thread parent id; only threads the user follows (started, replied to, or mentioned in)
@@ -604,11 +605,6 @@ export function ChatProvider({ session, children }: { session: Session; children
     [profiles, company, companies, members, switchCompany, memberCard, uid, channels, memberships, dmMembers, unread, threadUnread, previews, online, away, activeId, thread, focusId, view, query, huddle, huddles, ring, huddleNotice, setHuddle, inviteToHuddle, dismissRing, huddleName, meetings, reloadMeetings, setActive, setView, markRead, markUnread, markThreadRead, updateMembership, reload, channelTitle],
   );
 
-  if (!loaded || !value)
-    return (
-      <div className="flex h-full items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-tm-blue/20 border-t-tm-blue" />
-      </div>
-    );
+  if (!loaded || !value) return <AppSkeleton />;
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

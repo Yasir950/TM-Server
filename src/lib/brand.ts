@@ -1,8 +1,12 @@
 // The product's own name and mark (public/asset/AppIcon.svg, also the tab icon via app/icon.svg)
 export const APP_NAME = "Workchime";
 
-// Desktop app installer, offered from the logo menu in the top bar
-export const DESKTOP_APP_URL = process.env.NEXT_PUBLIC_DESKTOP_APP_URL || "/download/Workchime-Setup.exe";
+// Desktop app installers (built by .github/workflows/desktop.yml), offered from the logo menu in the top bar
+export const DESKTOP_WIN_URL = process.env.NEXT_PUBLIC_DESKTOP_WIN_URL || "/download/Workchime-Setup.exe";
+export const DESKTOP_MAC_URL = process.env.NEXT_PUBLIC_DESKTOP_MAC_URL || "/download/Workchime.dmg";
+
+// Dark app chrome shared by the rail and the top bar
+export const RAIL = "#0f2d4d";
 
 // Live voice/video/screen-share sessions, named like Google Meet / Teams "Meet now"
 export const CALL = "Meet";

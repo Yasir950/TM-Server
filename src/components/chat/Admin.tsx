@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { supabase, displayName, type Profile } from "@/lib/supabase";
-import { Avatar, btn, btnGhost, input } from "../ui";
+import { Avatar, Skeleton, btn, btnGhost, input } from "../ui";
 import { useChat } from "./store";
 import { ViewShell } from "./Views";
 import AdminPlatform from "./AdminPlatform";
@@ -76,7 +76,7 @@ export default function AdminView() {
         ).map(([label, v]) => (
           <div key={label} className="rounded-2xl border border-tm-line bg-white p-4">
             <div className="text-xs text-zinc-500">{label}</div>
-            <div className="mt-1 text-2xl font-semibold tabular-nums">{v ?? "–"}</div>
+            {stats ? <div className="mt-1 text-2xl font-semibold tabular-nums">{v ?? "–"}</div> : <Skeleton className="mt-2 h-7 w-16" />}
           </div>
         ))}
       </div>
@@ -96,7 +96,8 @@ export default function AdminView() {
           </div>
         </Card>
         <Card title="Busiest channels · 30 days">
-          {stats?.top_channels.length === 0 && <p className="text-sm text-zinc-400">No channel activity yet</p>}
+          {!stats && <div className="space-y-2.5">{[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-3.5 w-full" />)}</div>}
+          {stats?.top_channels.length === 0 &&<p className="text-sm text-zinc-400">No channel activity yet</p>}
           <ul className="space-y-1.5 text-sm">
             {stats?.top_channels.map((c) => (
               <li key={c.name} className="flex justify-between">

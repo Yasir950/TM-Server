@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Electron desktop app: its own Node/CommonJS project
+    "desktop/**",
   ]),
 ]);
 

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { supabase, displayName, type Channel, type Membership, type Message, type Webhook } from "@/lib/supabase";
 import { timeOf, fileSize } from "@/lib/format";
-import { Avatar, Modal, StatusBadge, Tabs, btn, btnGhost, input } from "../ui";
+import { Avatar, Modal, RowSkeleton, StatusBadge, Tabs, btn, btnGhost, input } from "../ui";
 import { useChat } from "./store";
 
 const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9_\s-]/g, "");
@@ -344,7 +344,7 @@ function PinnedList({ channelId }: { channelId: string }) {
       .order("pinned_at", { ascending: false })
       .then(({ data }) => setPins((data as Message[]) ?? []));
   }, [channelId]);
-  if (!pins) return null;
+  if (!pins) return <RowSkeleton count={3} size={0} />;
   if (!pins.length) return <Empty icon="📌" text="No pinned messages yet. Use ⋯ → Pin on any message." />;
   return (
     <ul className="max-h-80 space-y-2 overflow-y-auto">
@@ -376,7 +376,7 @@ function FilesList({ channelId }: { channelId: string }) {
       .limit(100)
       .then(({ data }) => setMsgs((data as Message[]) ?? []));
   }, [channelId]);
-  if (!msgs) return null;
+  if (!msgs) return <RowSkeleton count={4} size={36} />;
   const files = msgs.flatMap((m) => m.attachments.map((a) => ({ a, m })));
   if (!files.length) return <Empty icon="📁" text="No files shared here yet." />;
   return (

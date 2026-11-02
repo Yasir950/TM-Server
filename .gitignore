@@ -41,3 +41,6 @@ yarn-error.log*
 next-env.d.ts
 !.env.example
 .next-dev.log
+
+# Desktop installers for local testing (production uses GitHub releases)
+/public/download/

@@ -87,7 +87,7 @@ const Card = ({ title, children }: { title: string; children: React.ReactNode })
 // Onboarding: shown until the user belongs to a company -------------------
 
 export function Onboarding({ onClose }: { onClose?: () => void }) {
-  const { reload } = useChat();
+  const { me, reload } = useChat();
   const [tab, setTab] = useState<"create" | "invite" | "find">("create");
   const [name, setName] = useState("");
   const [handle, setHandle] = useState("");
@@ -111,24 +111,29 @@ export function Onboarding({ onClose }: { onClose?: () => void }) {
 
   const body = (
     <div className="space-y-4">
-      <Tabs tabs={[["create", "Create a company"], ["invite", "Use an invite"], ["find", "Find a company"]]} value={tab} onChange={setTab} />
+      <Tabs tabs={[["create", "Create"], ["invite", "Join with invite"], ["find", "Find"]]} value={tab} onChange={setTab} />
       {tab === "create" && (
-        <form className="space-y-3" onSubmit={(e) => (e.preventDefault(), run(supabase.rpc("create_company", { p_name: name, p_handle: handle })))}>
+        <form className="space-y-4" onSubmit={(e) => (e.preventDefault(), run(supabase.rpc("create_company", { p_name: name, p_handle: handle })))}>
           <Field label="Company name">
-            <input className={input} value={name} required onChange={(e) => (setName(e.target.value), setHandle(e.target.value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 39)))} />
+            <input className={input} value={name} required autoFocus placeholder="e.g. Acme Inc." onChange={(e) => (setName(e.target.value), setHandle(e.target.value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 39)))} />
           </Field>
-          <Field label="Company URL handle">
-            <input className={input} value={handle} required pattern="[a-z0-9][a-z0-9\-]{1,38}" onChange={(e) => setHandle(e.target.value.toLowerCase())} />
+          <Field label="Company URL">
+            <div className="flex items-center rounded-xl border border-tm-line bg-tm-surface transition focus-within:border-tm-blue/50 focus-within:bg-white focus-within:ring-4 focus-within:ring-tm-blue/10">
+              <span className="pl-3.5 text-sm text-zinc-400">{window.location.host}/</span>
+              <input className="min-w-0 flex-1 bg-transparent py-2.5 pr-3.5 text-sm outline-none" value={handle} required pattern="[a-z0-9][a-z0-9\-]{1,38}" placeholder="acme" onChange={(e) => setHandle(e.target.value.toLowerCase())} />
+            </div>
+            <span className="block text-xs text-zinc-400">Lowercase letters, numbers and dashes. Teammates use it to find you.</span>
           </Field>
-          <button className={btn}>Create company</button>
+          <button className={`${btn} w-full py-2.5`}>Create company</button>
         </form>
       )}
       {tab === "invite" && (
-        <form className="space-y-3" onSubmit={(e) => (e.preventDefault(), run(supabase.rpc("accept_invite", { p_token: token.trim().split("invite=").pop() })))}>
+        <form className="space-y-4" onSubmit={(e) => (e.preventDefault(), run(supabase.rpc("accept_invite", { p_token: token.trim().split("invite=").pop() })))}>
           <Field label="Invite link or code">
             <input className={input} value={token} required onChange={(e) => setToken(e.target.value)} placeholder="https://…/?invite=…" />
+            <span className="block text-xs text-zinc-400">Paste the link an admin sent you.</span>
           </Field>
-          <button className={btn}>Join company</button>
+          <button className={`${btn} w-full py-2.5`}>Join company</button>
         </form>
       )}
       {tab === "find" && (
@@ -177,18 +182,17 @@ export function Onboarding({ onClose }: { onClose?: () => void }) {
 
   if (onClose) return <Modal title="Add a company" onClose={onClose}>{body}</Modal>;
   return (
-    <div className="flex h-full items-center justify-center bg-tm-surface p-4">
-      <div className="tm-raised w-full max-w-md space-y-5 rounded-2xl bg-white p-6">
-        <Logo height={40} />
-        <div>
-          <h1 className="text-lg font-semibold">Join or create a company</h1>
-          <p className="text-sm text-zinc-500">Your channels, messages and teammates all live inside a company.</p>
-        </div>
-        {body}
-        <button className="text-sm text-zinc-500 hover:underline" onClick={() => supabase.auth.signOut()}>
+    <div className="flex min-h-full flex-col items-center justify-center overflow-y-auto bg-tm-surface px-4 py-12">
+      <Logo height={48} />
+      <h1 className="mt-8 text-center text-3xl font-bold">Welcome{me ? `, ${displayName(me).split(" ")[0]}` : ""} 👋</h1>
+      <p className="mt-2 max-w-sm text-center text-sm text-zinc-500">Create a company for your team, or join one you&apos;ve been invited to.</p>
+      <div className="tm-raised mt-8 w-full max-w-md rounded-2xl bg-white p-6">{body}</div>
+      <p className="mt-6 text-sm text-zinc-500">
+        Not you?{" "}
+        <button className="font-semibold text-tm-blue hover:underline" onClick={() => supabase.auth.signOut()}>
           Sign out
         </button>
-      </div>
+      </p>
     </div>
   );
 }
@@ -497,7 +501,7 @@ export function ProfileModal({ onClose }: { onClose: () => void }) {
     const results = await Promise.all([
       supabase.from("profiles").update({ full_name: fullName.trim(), username: username.trim().toLowerCase() }).eq("id", me.id),
       supabase.from("company_members").update({ designation: designation.trim(), phone: phone.replace(/[\s()-]/g, ""), phone_visible: phoneVisible }).eq("company_id", me.current_company_id).eq("user_id", me.id),
-      email.trim() && email.trim() !== mine?.email ? supabase.auth.updateUser({ email: email.trim() }) : Promise.resolve({ error: null }),
+      email.trim() && email.trim() !== mine?.email ? supabase.auth.updateUser({ email: email.trim() }, { emailRedirectTo: window.location.origin }) : Promise.resolve({ error: null }),
     ]);
     const err = results.find((r) => r.error)?.error;
     if (err) return setNotice(err.message);

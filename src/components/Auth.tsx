@@ -61,7 +61,7 @@ export default function Auth({ recovery, onDone }: { recovery?: boolean; onDone?
     const { data, error } =
       mode === "signin"
         ? await supabase.auth.signInWithPassword({ email, password })
-        : await supabase.auth.signUp({ email, password, options: { data: { full_name: fullName } } });
+        : await supabase.auth.signUp({ email, password, options: { data: { full_name: fullName }, emailRedirectTo: window.location.origin } });
     setBusy(false);
     if (error) setMsg({ error: true, text: error.message });
     else if (mode === "signup" && !data.session) setMsg({ text: "Check your email to confirm your account." });

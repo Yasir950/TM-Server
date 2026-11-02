@@ -65,6 +65,7 @@ const paths = {
     </>
   ),
   x: <path d="M18 6 6 18M6 6l12 12" />,
+  download: <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3" />,
   chevronDown: <path d="m6 9 6 6 6-6" />,
   chevronLeft: <path d="m15 18-6-6 6-6" />,
   messages: <path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z" />,

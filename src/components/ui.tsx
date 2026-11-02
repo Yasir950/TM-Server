@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { supabase, displayName, activeStatus, type Profile } from "@/lib/supabase";
-import { APP_NAME } from "@/lib/brand";
+import { APP_NAME, RAIL } from "@/lib/brand";
 
 const palette = ["#1c75bc", "#39b54a", "#155a91", "#2d8a3a", "#4a90c9", "#5cb85c"];
 
@@ -103,6 +103,108 @@ export function Tabs<T extends string>({ tabs, value, onChange }: { tabs: [T, st
           {label}
         </button>
       ))}
+    </div>
+  );
+}
+
+// Placeholder block shown while content loads; size and shape come from className
+export const Skeleton = ({ className = "", style }: { className?: string; style?: React.CSSProperties }) => (
+  <div className={`animate-pulse rounded-md bg-zinc-200/70 motion-reduce:animate-none ${className}`} style={style} />
+);
+
+// Varied line widths so stacked placeholders don't look like a grid
+const widths = ["w-3/4", "w-1/2", "w-2/3", "w-5/6", "w-2/5"];
+
+// Message rows: avatar, name + time, a line or two of body (matches MessageItem's spacing)
+export function MessageSkeleton({ count = 6 }: { count?: number }) {
+  return (
+    <div aria-busy="true" aria-label="Loading messages">
+      {Array.from({ length: count }, (_, i) => (
+        <div key={i} className="flex gap-3 px-6 pt-2.5 pb-1">
+          <Skeleton className="h-9 w-9 shrink-0 rounded-[30%]" />
+          <div className="flex-1 space-y-2 pt-0.5">
+            <div className="flex gap-2">
+              <Skeleton className="h-3.5 w-28" />
+              <Skeleton className="h-3.5 w-10" />
+            </div>
+            <Skeleton className={`h-3.5 ${widths[i % widths.length]}`} />
+            {i % 3 === 0 && <Skeleton className={`h-3.5 ${widths[(i + 2) % widths.length]}`} />}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// Bordered result cards, as in the Threads, Saved, Search and Reminders views
+export function CardSkeleton({ count = 4 }: { count?: number }) {
+  return (
+    <div className="space-y-2" aria-busy="true" aria-label="Loading">
+      {Array.from({ length: count }, (_, i) => (
+        <div key={i} className="flex gap-3 rounded-2xl border border-tm-line bg-white p-4">
+          <Skeleton className="h-[34px] w-[34px] shrink-0 rounded-[30%]" />
+          <div className="flex-1 space-y-2 pt-0.5">
+            <Skeleton className="h-3.5 w-40" />
+            <Skeleton className={`h-3.5 ${widths[i % widths.length]}`} />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// Compact list rows: icon/avatar and two short lines, for sidebar panels and modal lists
+export function RowSkeleton({ count = 5, size = 32 }: { count?: number; size?: number }) {
+  return (
+    <div className="space-y-1" aria-busy="true" aria-label="Loading">
+      {Array.from({ length: count }, (_, i) => (
+        <div key={i} className="flex items-center gap-2.5 px-2.5 py-2">
+          {size > 0 && <Skeleton className="shrink-0 rounded-lg" style={{ width: size, height: size }} />}
+          <div className="flex-1 space-y-1.5">
+            <Skeleton className="h-3 w-24" />
+            <Skeleton className={`h-3 ${widths[i % widths.length]}`} />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// The whole app frame while the workspace boots: top bar, rail, sidebar and a conversation
+export function AppSkeleton() {
+  return (
+    <div className="flex h-full flex-col" style={{ background: RAIL }} aria-busy="true" aria-label="Loading">
+      <div className="flex h-12 shrink-0 items-center gap-4 px-4">
+        <div className="h-[38px] w-[38px] shrink-0 animate-pulse rounded-[25%] bg-white/15 motion-reduce:animate-none" />
+        <div className="mx-auto h-8 w-full max-w-xl animate-pulse rounded-xl bg-white/10 motion-reduce:animate-none" />
+        <div className="h-[30px] w-[30px] shrink-0 animate-pulse rounded-[30%] bg-white/15 motion-reduce:animate-none" />
+      </div>
+      <div className="flex min-h-0 flex-1">
+        <div className="hidden w-[72px] shrink-0 flex-col items-center gap-4 pt-3 md:flex">
+          {[0, 1, 2, 3].map((i) => (
+            <div key={i} className="h-10 w-10 animate-pulse rounded-xl bg-white/10 motion-reduce:animate-none" />
+          ))}
+        </div>
+        <div className="flex min-w-0 flex-1 bg-tm-surface md:gap-2 md:rounded-tl-2xl md:p-2">
+          <div className="w-full shrink-0 space-y-2 px-2 pt-3 md:w-64 md:p-0 md:pt-1.5">
+            <Skeleton className="mx-2.5 mb-4 h-6 w-32" />
+            {Array.from({ length: 9 }, (_, i) => (
+              <div key={i} className={`flex items-center gap-2.5 px-2.5 py-1 ${i === 4 ? "mt-6" : ""}`}>
+                <Skeleton className="h-4 w-4 shrink-0" />
+                <Skeleton className={`h-3.5 ${widths[i % widths.length]}`} />
+              </div>
+            ))}
+          </div>
+          <div className="tm-raised hidden min-w-0 flex-1 flex-col overflow-hidden bg-white md:flex md:rounded-2xl">
+            <div className="flex h-14 shrink-0 items-center border-b border-tm-line px-6">
+              <Skeleton className="h-5 w-40" />
+            </div>
+            <div className="flex-1 overflow-hidden pt-2">
+              <MessageSkeleton count={7} />
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

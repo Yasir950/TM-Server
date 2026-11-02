@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase, displayName, activeStatus, type Message, type Reminder } from "@/lib/supabase";
 import { dayLabel, timeOf } from "@/lib/format";
-import { Avatar, EmojiPopover, Modal, btn, btnGhost, input } from "../ui";
+import { Avatar, CardSkeleton, EmojiPopover, Modal, btn, btnGhost, input } from "../ui";
 import { useChat } from "./store";
 import { useSavedIds } from "./useMessages";
 import { Icon, type IconName } from "../icons";
@@ -74,7 +74,8 @@ export function ThreadsView() {
   }, [unreadKey]);
   return (
     <ViewShell icon="messages" title="Threads" subtitle="Conversations you started, joined or were mentioned in">
-      {threads?.length === 0 && <EmptyState icon="messages" text="No threads yet. Reply to a message to start one." />}
+      {!threads && <CardSkeleton />}
+      {threads?.length === 0 &&<EmptyState icon="messages" text="No threads yet. Reply to a message to start one." />}
       {threads?.map((m) => (
         <div key={m.id} onClickCapture={(e) => { e.stopPropagation(); setThread({ id: m.id, channelId: m.channel_id }); }}>
           <ResultCard
@@ -108,6 +109,7 @@ export function SavedView() {
   const shown = items?.filter((m) => savedIds?.has(m.id) ?? true);
   return (
     <ViewShell icon="bookmark" title="Saved" subtitle="Messages you saved for later">
+      {!shown && <CardSkeleton />}
       {shown?.length === 0 && <EmptyState icon="bookmark" text="Nothing saved yet. Hover a message and click the bookmark to keep it here." />}
       {shown?.map((m) => <ResultCard key={m.id} m={m} />)}
     </ViewShell>
@@ -164,7 +166,7 @@ export function SearchView() {
   }, [query, profiles, channels]);
 
   return (
-    <ViewShell icon="search" title={`Results for “${query}”`} subtitle={results ? `${results.length}${results.length === 50 ? "+" : ""} messages` : "Searching…"}>
+    <ViewShell icon="search" title={`Results for “${query}”`} subtitle={results ? `${results.length}${results.length === 50 ? "+" : ""} messages` : undefined}>
       <div className="flex flex-wrap gap-1.5 pb-2">
         {["has:link", "has:file", "has:pin", "is:thread"].map((f) => (
           <button
@@ -177,7 +179,8 @@ export function SearchView() {
         ))}
         <span className="self-center text-xs text-zinc-400">also: from:@name in:#channel before:/after:/on:YYYY-MM-DD</span>
       </div>
-      {results?.length === 0 && <EmptyState icon="search" text="No messages matched. Try fewer words, or modifiers like from:@name, in:#channel, has:link." />}
+      {!results && <CardSkeleton />}
+      {results?.length === 0 &&<EmptyState icon="search" text="No messages matched. Try fewer words, or modifiers like from:@name, in:#channel, has:link." />}
       {results?.map((m) => <ResultCard key={m.id} m={m} />)}
     </ViewShell>
   );
@@ -218,6 +221,7 @@ export function RemindersView() {
   );
   return (
     <ViewShell icon="clock" title="Reminders" subtitle="Create one with /remind me in 20m <text>">
+      {!items && <CardSkeleton count={3} />}
       {items?.length === 0 && <EmptyState icon="clock" text="No reminders. Type /remind me tomorrow Review the report in any conversation." />}
       {upcoming.map(row)}
       {done.length > 0 && <div className="pt-4 text-xs font-semibold tracking-wide text-zinc-400 uppercase">Completed</div>}

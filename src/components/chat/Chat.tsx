@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { supabase, displayName, activeStatus, inDnd, isAdmin, meetingLive, type Channel, type Message, type Profile } from "@/lib/supabase";
 import { dayLabel, timeOf } from "@/lib/format";
-import { Avatar, Logo, Mark, StatusBadge } from "../ui";
+import { Avatar, Logo, Mark, RowSkeleton, StatusBadge, btn } from "../ui";
 import { useChat } from "./store";
 import ChannelView from "./ChannelView";
 import ThreadPanel from "./ThreadPanel";
@@ -14,7 +14,7 @@ import { CompanyLogo, CompanySwitcher, CompanyView, InviteFromUrl, MemberCard, M
 import Huddle, { IncomingHuddle } from "./Huddle";
 import { MeetingsView, useNow } from "./Meetings";
 import { Icon, type IconName } from "../icons";
-import { APP_NAME, CALL, DESKTOP_APP_URL } from "@/lib/brand";
+import { APP_NAME, CALL, DESKTOP_MAC_URL, DESKTOP_WIN_URL, RAIL } from "@/lib/brand";
 
 export default function Chat() {
   const { activeId, thread, view, huddle, setHuddle, company, memberCard } = useChat();
@@ -198,14 +198,20 @@ function AppMenu() {
       {open && (
         <div className="tm-pop tm-float absolute top-11 left-0 z-40 w-64 rounded-2xl bg-white p-2 text-sm">
           <div className="px-2 py-2 font-semibold text-zinc-900">{APP_NAME}</div>
-          <a
-            href={DESKTOP_APP_URL}
-            download
-            onClick={() => setOpen(false)}
-            className="flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-left transition hover:bg-tm-blue-light hover:text-tm-blue-dark"
-          >
-            💻 Download desktop app
-          </a>
+          {navigator.userAgent.includes("WorkchimeDesktop") ? (
+            <p className="px-2 pb-1 text-zinc-500">You&apos;re using the desktop app.</p>
+          ) : (
+            // Mac gets the .dmg, everyone else the Windows installer
+            <a
+              href={/Mac/i.test(navigator.platform || navigator.userAgent) ? DESKTOP_MAC_URL : DESKTOP_WIN_URL}
+              download
+              onClick={() => setOpen(false)}
+              className={`${btn} flex w-full items-center justify-center gap-2`}
+            >
+              <Icon name="download" size={16} />
+              Download desktop app
+            </a>
+          )}
         </div>
       )}
     </div>
@@ -223,8 +229,6 @@ const MenuItem = ({ onClick, children }: { onClick: () => void; children: React.
 
 type Tab = "home" | "dms" | "activity";
 
-// Dark app chrome shared by the rail and the top bar
-const RAIL = "#0f2d4d";
 const railRing = { boxShadow: `0 0 0 2px ${RAIL}` };
 
 // Slack-style app rail: switches what the sidebar lists
@@ -366,6 +370,7 @@ function ActivityList() {
   return (
     <>
       <PanelHeader title="Activity" />
+      {!shown && <RowSkeleton />}
       {shown?.length === 0 && <p className="px-2.5 text-sm text-zinc-400">No mentions yet. When someone @mentions you, it shows up here.</p>}
       <div className="space-y-1">
         {shown?.map((m) => {

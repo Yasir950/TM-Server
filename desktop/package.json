@@ -1,0 +1,46 @@
+{
+  "name": "workchime-desktop",
+  "productName": "Workchime",
+  "version": "1.0.0",
+  "description": "Workchime desktop app",
+  "main": "main.js",
+  "author": "Workchime",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "icon": "node make-icon.mjs",
+    "dist:win": "npm run icon && electron-builder --win",
+    "dist:mac": "npm run icon && electron-builder --mac"
+  },
+  "devDependencies": {
+    "electron": "^38.0.0",
+    "electron-builder": "^26.0.0",
+    "sharp": "^0.34.0"
+  },
+  "build": {
+    "appId": "app.workchime.desktop",
+    "productName": "Workchime",
+    "directories": { "output": "dist", "buildResources": "build" },
+    "files": ["main.js"],
+    "win": {
+      "target": "nsis",
+      "icon": "build/icon.png",
+      "artifactName": "Workchime-Setup.${ext}"
+    },
+    "nsis": { "oneClick": true, "perMachine": false },
+    "mac": {
+      "target": [{ "target": "dmg", "arch": ["universal"] }],
+      "icon": "build/icon.png",
+      "category": "public.app-category.business",
+      "artifactName": "Workchime.${ext}",
+      "hardenedRuntime": true,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "extendInfo": {
+        "NSCameraUsageDescription": "Workchime uses your camera for video in Meet calls.",
+        "NSMicrophoneUsageDescription": "Workchime uses your microphone for Meet calls and clips.",
+        "NSScreenCaptureUsageDescription": "Workchime shares your screen in Meet calls."
+      }
+    }
+  }
+}

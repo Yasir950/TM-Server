@@ -11,7 +11,7 @@ import { ChannelDetails } from "./Modals";
 import Canvas from "./Canvas";
 import { MobileBack } from "./Views";
 import { MeetingBanner, ScheduleMeeting } from "./Meetings";
-import { Avatar, StatusBadge } from "../ui";
+import { Avatar, MessageSkeleton, StatusBadge } from "../ui";
 import { Icon } from "../icons";
 import { CALL, call } from "@/lib/brand";
 
@@ -251,7 +251,7 @@ export function MessageList({ messages, reactions, loading, hasMore, loadOlder, 
   return (
     <div ref={box} onScroll={onScroll} className="flex-1 overflow-y-auto pb-2">
       {!hasMore && !loading && intro}
-      {loading && <p className="p-5 text-sm text-zinc-400">Loading messages…</p>}
+      {loading && <div className="pt-3"><MessageSkeleton count={inThread ? 3 : 8} /></div>}
       {messages.map((m, i) => {
         const prev = messages[i - 1];
         const newDay = !prev || dayLabel(prev.created_at) !== dayLabel(m.created_at);
