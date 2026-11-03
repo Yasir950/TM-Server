@@ -1,16 +1,24 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { supabase, displayName, isAdmin, uploadImage, type Company, type Role } from "@/lib/supabase";
-import { Avatar, Logo, Modal, Tabs, btn, btnGhost, input } from "../ui";
+import { supabase, displayName, activeStatus, inDnd, isAdmin, uploadImage, type Company, type Profile, type Role } from "@/lib/supabase";
+import { signOut } from "@/lib/push";
+import { Avatar, Logo, Modal, SidePanel, StatusBadge, Tabs, avatarColor, btn, btnGhost, input } from "../ui";
 import { useChat } from "./store";
 import { ViewShell } from "./Views";
 import { Icon } from "../icons";
+import { CALL } from "@/lib/brand";
 
 const INVITE_KEY = "tm-invite";
 export const inviteUrl = (token: string) => `${window.location.origin}/?invite=${token}`;
 const roleLabel: Record<Role, string> = { owner: "Owner", admin: "Admin", member: "Member", guest: "Guest" };
-const fmtDate = (d: string | null) => (d ? new Date(d).toLocaleDateString(undefined, { dateStyle: "medium" }) : "–");
+const roleTag: Record<Role, string> = {
+  owner: "bg-tm-blue text-white",
+  admin: "bg-tm-blue-light text-tm-blue-dark",
+  member: "bg-tm-green-light text-tm-green",
+  guest: "bg-amber-50 text-amber-700",
+};
+const fmtDate =(d: string | null) => (d ? new Date(d).toLocaleDateString(undefined, { dateStyle: "medium" }) : "–");
 
 const readInvite = () => {
   try {
@@ -117,11 +125,8 @@ export function Onboarding({ onClose }: { onClose?: () => void }) {
           <Field label="Company name">
             <input className={input} value={name} required autoFocus placeholder="e.g. Acme Inc." onChange={(e) => (setName(e.target.value), setHandle(e.target.value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 39)))} />
           </Field>
-          <Field label="Company URL">
-            <div className="flex items-center rounded-xl border border-tm-line bg-tm-surface transition focus-within:border-tm-blue/50 focus-within:bg-white focus-within:ring-4 focus-within:ring-tm-blue/10">
-              <span className="pl-3.5 text-sm text-zinc-400">{window.location.host}/</span>
-              <input className="min-w-0 flex-1 bg-transparent py-2.5 pr-3.5 text-sm outline-none" value={handle} required pattern="[a-z0-9][a-z0-9\-]{1,38}" placeholder="acme" onChange={(e) => setHandle(e.target.value.toLowerCase())} />
-            </div>
+          <Field label="Company handle">
+            <input className={input} value={handle} required pattern="[a-z0-9][a-z0-9\-]{1,38}" onChange={(e) => setHandle(e.target.value.toLowerCase())} />
             <span className="block text-xs text-zinc-400">Lowercase letters, numbers and dashes. Teammates use it to find you.</span>
           </Field>
           <button className={`${btn} w-full py-2.5`}>Create company</button>
@@ -189,7 +194,7 @@ export function Onboarding({ onClose }: { onClose?: () => void }) {
       <div className="tm-raised mt-8 w-full max-w-md rounded-2xl bg-white p-6">{body}</div>
       <p className="mt-6 text-sm text-zinc-500">
         Not you?{" "}
-        <button className="font-semibold text-tm-blue hover:underline" onClick={() => supabase.auth.signOut()}>
+        <button className="font-semibold text-tm-blue hover:underline" onClick={signOut}>
           Sign out
         </button>
       </p>
@@ -275,8 +280,23 @@ export function CompanySwitcher() {
 
 // Members directory -------------------------------------------------------
 
+// Square profile photo that fills its box, or the person's initial on their avatar colour
+function Photo({ profile, className = "" }: { profile?: Profile; className?: string }) {
+  return profile?.avatar_url ? (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img src={profile.avatar_url} alt="" className={`object-cover ${className}`} />
+  ) : (
+    <span className={`flex items-center justify-center text-5xl font-semibold text-white ${className}`} style={{ background: avatarColor(profile) }}>
+      {displayName(profile).charAt(0).toUpperCase()}
+    </span>
+  );
+}
+
+// Presence dot colour and label, matching Avatar's online/away dot
+const presence = (online: boolean, away: boolean) => (online && !away ? ["bg-tm-green", "Active"] : online ? ["bg-amber-400", "Away"] : ["bg-zinc-300", "Offline"]);
+
 export function MembersView() {
-  const { me, members, profiles, showMember } = useChat();
+  const { me, members, profiles, online, away, showMember } = useChat();
   const [q, setQ] = useState("");
   const [role, setRole] = useState("");
   const [status, setStatus] = useState("active");
@@ -286,14 +306,24 @@ export function MembersView() {
   const depts = [...new Set(Object.values(members).map((m) => m.department).filter(Boolean))].sort();
   const rows = Object.values(members)
     .filter((m) => (!role || m.role === role) && (!status || m.status === status) && (!dept || m.department === dept))
-    .filter((m) => `${displayName(profiles[m.user_id])} ${profiles[m.user_id]?.username} ${m.designation} ${m.email ?? ""}`.toLowerCase().includes(q.toLowerCase()))
+    .filter((m) => `${displayName(profiles[m.user_id])} ${profiles[m.user_id]?.username} ${m.designation} ${m.department} ${m.email ?? ""}`.toLowerCase().includes(q.toLowerCase()))
     .sort((a, b) => displayName(profiles[a.user_id]).localeCompare(displayName(profiles[b.user_id])));
+  const active = Object.values(members).filter((m) => m.status === "active");
+  const activeNow = active.filter((m) => online.has(m.user_id) && !away.has(m.user_id)).length;
 
   return (
-    <ViewShell icon="users" title="Members" subtitle={`${Object.values(members).filter((m) => m.status === "active").length} active`}>
-      <div className="space-y-3 p-6">
+    <ViewShell
+      icon="users"
+      title="Members"
+      subtitle={`${active.length} members · ${activeNow} active now`}
+      action={(admin || me.role === "member") && <button className={btn} onClick={() => setInviting(true)}>Invite people</button>}
+    >
+      <div className="space-y-4">
         <div className="flex flex-wrap gap-2">
-          <input className={`${input} max-w-xs`} value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search name, designation, email" />
+          <div className="relative w-full sm:max-w-xs">
+            <Icon name="search" size={16} className="absolute top-3 left-3 text-zinc-400" />
+            <input className={`${input} pl-9`} value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search name, title, department, email" />
+          </div>
           <select className={`${input} w-auto`} value={role} onChange={(e) => setRole(e.target.value)}>
             <option value="">All roles</option>
             {Object.entries(roleLabel).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
@@ -311,24 +341,43 @@ export function MembersView() {
               <option value="">All statuses</option>
             </select>
           )}
-          {(admin || me.role === "member") && <button className={`${btn} ml-auto`} onClick={() => setInviting(true)}>Invite people</button>}
         </div>
-        <ul className="divide-y divide-tm-line rounded-2xl border border-tm-line bg-white">
-          {rows.map((m) => (
-            <li key={m.user_id}>
-              <button onClick={() => showMember(m.user_id)} className="flex w-full items-center gap-3 px-4 py-2.5 text-left transition hover:bg-tm-surface">
-                <Avatar profile={profiles[m.user_id]} size={36} />
-                <div className="min-w-0 flex-1">
-                  <div className="truncate font-medium">{displayName(profiles[m.user_id])}</div>
-                  <div className="truncate text-xs text-zinc-500">{[m.designation, m.department].filter(Boolean).join(" · ") || `@${profiles[m.user_id]?.username}`}</div>
-                </div>
-                {m.status === "deactivated" && <span className="text-xs text-red-600">Deactivated</span>}
-                <span className="rounded-md bg-tm-surface px-2 py-0.5 text-xs text-zinc-600">{roleLabel[m.role]}</span>
-              </button>
-            </li>
-          ))}
-          {rows.length === 0 && <li className="px-4 py-6 text-center text-sm text-zinc-400">No members match</li>}
+        <p className="text-sm text-zinc-500">
+          {rows.length} {rows.length === 1 ? "result" : "results"}
+        </p>
+        {/* People directory: a card per teammate, like Slack's */}
+        <ul className="grid grid-cols-[repeat(auto-fill,minmax(140px,1fr))] gap-2.5">
+          {rows.map((m) => {
+            const p = profiles[m.user_id];
+            const [dot, label] = presence(online.has(m.user_id), away.has(m.user_id));
+            return (
+              <li key={m.user_id}>
+                <button
+                  onClick={() => showMember(m.user_id)}
+                  className="tm-fade-up flex h-full w-full flex-col overflow-hidden rounded-xl border border-tm-line bg-white text-left transition hover:-translate-y-px hover:border-tm-blue/30"
+                >
+                  <span className="relative block">
+                    <Photo profile={p} className={`aspect-square w-full ${m.status === "deactivated" ? "opacity-50 grayscale" : ""}`} />
+                    {m.status === "active" && <span title={label} className={`absolute right-1.5 bottom-1.5 h-3 w-3 rounded-full border-2 border-white ${dot}`} />}
+                  </span>
+                  <span className="block min-w-0 p-2">
+                    <span className="flex items-center gap-1 text-sm font-semibold text-zinc-900">
+                      <span className="truncate">{displayName(p)}</span>
+                      <StatusBadge profile={p} />
+                      {m.user_id === me.id && <span className="shrink-0 text-xs font-normal text-zinc-400">(you)</span>}
+                    </span>
+                    <span className="block truncate text-xs text-zinc-500">{m.designation || `@${p?.username}`}</span>
+                    <span className="mt-1 flex flex-wrap gap-1 text-[10px] font-medium">
+                      <span className={`rounded-md px-1.5 py-0.5 ${roleTag[m.role]}`}>{roleLabel[m.role]}</span>
+                      {m.status === "deactivated" && <span className="rounded-md bg-red-50 px-1.5 py-0.5 text-red-600">Deactivated</span>}
+                    </span>
+                  </span>
+                </button>
+              </li>
+            );
+          })}
         </ul>
+        {rows.length === 0 && <p className="py-12 text-center text-sm text-zinc-400">No members match</p>}
       </div>
       {inviting && <InviteModal onClose={() => setInviting(false)} />}
     </ViewShell>
@@ -385,34 +434,55 @@ function InviteModal({ onClose }: { onClose: () => void }) {
 
 // Member details card -------------------------------------------------------
 
+const InfoList = ({ title, rows }: { title: string; rows: [string, React.ReactNode][] }) => (
+  <section className="space-y-2.5 border-t border-tm-line pt-4">
+    <h4 className="text-sm font-semibold text-zinc-900">{title}</h4>
+    <dl className="space-y-2 text-sm">
+      {rows.map(([k, v]) => (
+        <div key={k}>
+          <dt className="text-xs text-zinc-500">{k}</dt>
+          <dd className="truncate">{v}</dd>
+        </div>
+      ))}
+    </dl>
+  </section>
+);
+
+// Profile pane docked on the right, opened by clicking anyone's name or card
 export function MemberCard() {
-  const { me, members, profiles, memberCard, showMember, setActive, reload } = useChat();
+  const { me, members, profiles, online, away, memberCard, showMember, setActive, setHuddle, reload } = useChat();
   const m = memberCard ? members[memberCard] : undefined;
   const p = memberCard ? profiles[memberCard] : undefined;
   const [designation, setDesignation] = useState(m?.designation ?? "");
   const [department, setDepartment] = useState(m?.department ?? "");
+  const [editing, setEditing] = useState(false);
   const [error, setError] = useState("");
   if (!m || !p) return null;
   const admin = isAdmin(me);
   const self = m.user_id === me.id;
+  const status = activeStatus(p);
+  const [dot, label] = presence(online.has(p.id), away.has(p.id));
   const close = () => showMember(null);
   const rpc = async (fn: string, args: object) => {
     const { error } = await supabase.rpc(fn, args);
     setError(error?.message ?? "");
     if (!error) await reload();
   };
-  const message = async () => {
+  // Opens (creating if needed) the DM with this person and returns its id
+  const openDm = async () => {
     const { data, error } = await supabase.rpc("get_or_create_dm", { p_user_ids: [m.user_id] });
-    if (error) return setError(error.message);
+    if (error) return setError(error.message), null;
     await reload();
     close();
     setActive(data);
+    return data as string;
   };
-  const rows: [string, React.ReactNode][] = [
-    ["Designation", m.designation || "–"],
-    ["Department", m.department || "–"],
+  const contact: [string, React.ReactNode][] = [
     ["Email", m.email ? <a className="text-tm-blue hover:underline" href={`mailto:${m.email}`}>{m.email}</a> : "Hidden"],
     ["Phone", m.phone ? <a className="text-tm-blue hover:underline" href={`tel:${m.phone}`}>{m.phone}</a> : "Not shared"],
+  ];
+  const about: [string, React.ReactNode][] = [
+    ["Department", m.department || "–"],
     ["Role", roleLabel[m.role]],
     ["Joined", fmtDate(m.joined_at)],
     ...(admin
@@ -425,24 +495,54 @@ export function MemberCard() {
   ];
 
   return (
-    <Modal title="Member details" onClose={close}>
-      <div className="space-y-4">
-        <div className="flex items-center gap-4">
-          <Avatar profile={p} size={64} />
-          <div className="min-w-0">
-            <div className="truncate text-lg font-semibold">{displayName(p)}</div>
-            <div className="truncate text-sm text-zinc-500">@{p.username}</div>
-          </div>
+    <SidePanel title="Profile" onClose={close}>
+      <div className="space-y-5">
+        <div className="flex justify-center">
+          <Photo profile={p} className={`h-32 w-32 rounded-2xl ${m.status === "deactivated" ? "opacity-50 grayscale" : ""}`} />
         </div>
-        <dl className="grid grid-cols-[8rem_1fr] gap-y-1.5 text-sm">
-          {rows.map(([k, v]) => (
-            <div key={k} className="contents">
-              <dt className="text-zinc-500">{k}</dt>
-              <dd className="truncate">{v}</dd>
-            </div>
-          ))}
-        </dl>
-        {!self && m.status === "active" && <button className={btn} onClick={message}>Message</button>}
+        <div className="space-y-1 text-center">
+          <h3 className="text-xl font-bold text-zinc-900">
+            {displayName(p)}
+            {self && <span className="ml-1.5 text-sm font-normal text-zinc-400">(you)</span>}
+          </h3>
+          {m.designation && <p className="text-[15px] text-zinc-700">{m.designation}</p>}
+          <p className="text-sm text-zinc-500">@{p.username}</p>
+          {status && (
+            <p className="flex items-center justify-center gap-1.5 pt-1 text-sm text-zinc-700">
+              <span>{status.emoji || "💬"}</span>
+              <span className="truncate">{status.text}</span>
+            </p>
+          )}
+          {m.status === "active" ? (
+            <p className="flex items-center justify-center gap-2 pt-1 text-sm text-zinc-600">
+              <span className={`h-2.5 w-2.5 rounded-full ${dot}`} />
+              {label}
+              {inDnd(p) && <span className="text-zinc-400">· 🌙 Notifications paused</span>}
+            </p>
+          ) : (
+            <p className="pt-1 text-sm font-medium text-red-600">Deactivated</p>
+          )}
+        </div>
+        <div className="flex gap-2">
+          {self ? (
+            <button className={`${btnGhost} flex-1`} onClick={() => setEditing(true)}>Edit profile</button>
+          ) : (
+            m.status === "active" && (
+              <>
+                <button className={`${btn} flex flex-1 items-center justify-center gap-2`} onClick={openDm}>
+                  <Icon name="messages" size={16} />
+                  Message
+                </button>
+                <button className={`${btnGhost} flex flex-1 items-center justify-center gap-2`} onClick={async () => { const id = await openDm(); if (id) setHuddle(id); }}>
+                  <Icon name="headphones" size={16} />
+                  {CALL}
+                </button>
+              </>
+            )
+          )}
+        </div>
+        <InfoList title="Contact information" rows={contact} />
+        <InfoList title="About" rows={about} />
         {admin && !self && m.role !== "owner" && (
           <div className="space-y-3 rounded-xl border border-tm-line p-3">
             <div className="text-sm font-semibold text-zinc-500">Admin</div>
@@ -479,7 +579,8 @@ export function MemberCard() {
         )}
         {error && <p className="text-sm text-red-600">{error}</p>}
       </div>
-    </Modal>
+      {editing && <ProfileModal onClose={() => setEditing(false)} />}
+    </SidePanel>
   );
 }
 
@@ -601,7 +702,7 @@ export function CompanyView() {
             <CompanyLogo company={company} size={64} />
             <div className="min-w-0 flex-1">
               <div className="text-lg font-semibold">{company.name}</div>
-              <div className="text-sm text-zinc-500">{window.location.host}/{company.handle} · {active.length} members</div>
+              <div className="text-sm text-zinc-500">@{company.handle} ·{active.length} members</div>
             </div>
           </div>
           {company.description && <p className="text-sm">{company.description}</p>}

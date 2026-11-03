@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { supabase, displayName } from "@/lib/supabase";
 import { renderBody, timeOf } from "@/lib/format";
 import { Icon } from "../icons";
+import { mentionUsers } from "../ui";
 import { useChat } from "./store";
 
 type Row = { channel_id: string; body: string; updated_by: string | null; updated_at: string };
@@ -56,7 +57,7 @@ export default function Canvas({ channelId, onClose }: { channelId: string; onCl
     save(lines.join("\n"));
   };
 
-  const users = new Set(Object.values(profiles).map((p) => p.username.toLowerCase()));
+  const users = mentionUsers(profiles);
   const chans = new Set(Object.values(channels).map((c) => (c.name ?? "").toLowerCase()));
   const lines = row?.body.split("\n") ?? [];
   const tasks = lines.filter((l) => TASK.test(l));

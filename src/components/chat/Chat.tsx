@@ -7,7 +7,7 @@ import { Avatar, Logo, Mark, RowSkeleton, StatusBadge, btn } from "../ui";
 import { useChat } from "./store";
 import ChannelView from "./ChannelView";
 import ThreadPanel from "./ThreadPanel";
-import { BrowseChannels, CreateChannel, NewDM } from "./Modals";
+import { BrowseChannels, ChannelDetails, CreateChannel, NewDM } from "./Modals";
 import { QuickSwitcher, RemindersView, SavedView, SearchView, StatusModal, ThreadsView } from "./Views";
 import AdminView from "./Admin";
 import { CompanyLogo, CompanySwitcher, CompanyView, InviteFromUrl, MemberCard, MembersView, Onboarding, ProfileModal } from "./Company";
@@ -15,9 +15,10 @@ import Huddle, { IncomingHuddle } from "./Huddle";
 import { MeetingsView, useNow } from "./Meetings";
 import { Icon, type IconName } from "../icons";
 import { APP_NAME, CALL, DESKTOP_MAC_URL, DESKTOP_WIN_URL, RAIL } from "@/lib/brand";
+import { enablePush, signOut } from "@/lib/push";
 
 export default function Chat() {
-  const { activeId, thread, view, huddle, setHuddle, company, memberCard } = useChat();
+  const { activeId, thread, view, huddle, setHuddle, company, memberCard, members, channels, channelDetails, showChannelDetails } = useChat();
   const [switcher, setSwitcher] = useState(false);
   const [tab, setTab] = useState<Tab>("home");
 
@@ -41,7 +42,16 @@ export default function Chat() {
     );
 
   // Phones show one pane at a time, like Slack mobile: the tab list, or the open conversation/view (or its thread) full screen
-  const open = !!(activeId || view);
+  // The right pane (thread, profile or channel details) docks beside main and narrows it; below lg it takes main's place
+  const detailsChannel = channelDetails ? channels[channelDetails] : undefined;
+  const pane = thread ? (
+    <ThreadPanel key={thread.id} messageId={thread.id} channelId={thread.channelId} />
+  ) : detailsChannel ? (
+    <ChannelDetails key={detailsChannel.id} channel={detailsChannel} onClose={() => showChannelDetails(null)} />
+  ) : memberCard && members[memberCard] ? (
+    <MemberCard key={memberCard} />
+  ) : null;
+  const open = !!(activeId || view || pane);
   const mobileList = open ? "hidden md:flex" : "flex";
 
   return (
@@ -53,19 +63,49 @@ export default function Chat() {
           <Sidebar tab={tab} className={mobileList} />
           <main
             className={`tm-raised min-w-0 flex-1 flex-col overflow-hidden bg-white max-md:pb-[env(safe-area-inset-bottom)] md:rounded-2xl ${
-              thread ? "hidden lg:flex" : open ? "flex" : "hidden md:flex"
+              pane ? "hidden lg:flex" : open ? "flex" : "hidden md:flex"
             }`}
           >
             {view === "threads" ? <ThreadsView /> : view === "saved" ? <SavedView /> : view === "search" ? <SearchView /> : view === "reminders" ? <RemindersView /> : view === "meetings" ? <MeetingsView /> : view === "admin" ? <AdminView /> : view === "members" ? <MembersView /> : view === "company" ? <CompanyView key={company.id} /> : activeId ? <ChannelView key={activeId} channelId={activeId} /> : <Empty />}
           </main>
-          {thread && <ThreadPanel key={thread.id} messageId={thread.id} channelId={thread.channelId} />}
+          {pane}
         </div>
       </div>
       {switcher && <QuickSwitcher onClose={() => setSwitcher(false)} />}
       {huddle && <Huddle key={huddle} channelId={huddle} onLeave={() => setHuddle(null)} />}
       <IncomingHuddle />
-      <MemberCard key={memberCard} />
       <InviteFromUrl />
+      <Toasts />
+    </div>
+  );
+}
+
+// In-app notification cards for new DMs, mentions (including @channel) and thread replies
+function Toasts() {
+  const { toasts, dismissToast, profiles } = useChat();
+  if (!toasts.length) return null;
+  return (
+    <div className="fixed right-4 bottom-20 z-50 flex w-[min(22rem,calc(100vw-2rem))] flex-col gap-2 md:bottom-4" aria-live="polite">
+      {toasts.map((t) => (
+        <div key={t.id} className="tm-pop tm-float flex items-start gap-3 rounded-2xl bg-white p-3">
+          <button
+            onClick={() => {
+              t.onOpen();
+              dismissToast(t.id);
+            }}
+            className="flex min-w-0 flex-1 items-start gap-3 text-left"
+          >
+            {t.from ? <Avatar profile={profiles[t.from]} size={36} /> : <Mark size={36} className="rounded-[30%]" />}
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-sm font-semibold text-zinc-900">{t.title}</span>
+              <span className="line-clamp-2 text-sm text-zinc-600">{t.body}</span>
+            </span>
+          </button>
+          <button onClick={() => dismissToast(t.id)} title="Dismiss" className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-zinc-400 transition hover:bg-tm-surface hover:text-zinc-700">
+            <Icon name="x" size={14} />
+          </button>
+        </div>
+      ))}
     </div>
   );
 }
@@ -112,8 +152,8 @@ function TopBar({ onSwitcher, className }: { onSwitcher: () => void; className: 
 
   return (
     <header className={`${className} h-12 shrink-0 items-center gap-3 px-3 md:gap-4 md:px-4`} style={{ background: RAIL }}>
-      {/* Lines up over the 72px rail on desktop */}
-      <span className="flex shrink-0 justify-center md:-ml-4 md:w-[72px]">
+      {/* Lines up over the 48px rail on desktop */}
+      <span className="flex shrink-0 justify-center md:-ml-4 md:w-12">
         <AppMenu />
       </span>
       <form
@@ -163,7 +203,7 @@ function TopBar({ onSwitcher, className }: { onSwitcher: () => void; className: 
               </>
             )}
             <div className="my-1 h-px bg-tm-line" />
-            <MenuItem onClick={() => supabase.auth.signOut()}>Sign out</MenuItem>
+            <MenuItem onClick={signOut}>Sign out</MenuItem>
           </div>
         )}
       </div>
@@ -193,7 +233,7 @@ function AppMenu() {
   return (
     <div className="relative" ref={ref}>
       <button onClick={() => setOpen(!open)} title={APP_NAME} className="block rounded-[25%] transition hover:opacity-90">
-        <Mark size={38} className="rounded-[25%]" />
+        <Mark size={32} className="rounded-[25%]" />
       </button>
       {open && (
         <div className="tm-pop tm-float absolute top-11 left-0 z-40 w-64 rounded-2xl bg-white p-2 text-sm">
@@ -250,11 +290,11 @@ function Rail({ tab, onTab, className }: { tab: Tab; onTab: (t: Tab) => void; cl
   return (
     // Bottom tab bar on phones, left rail from md up
     <nav
-      className={`${className} shrink-0 justify-around border-t border-white/10 pt-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))] md:w-[72px] md:flex-col md:items-center md:justify-start md:gap-3 md:border-0 md:pt-3 md:pb-0`}
+      className={`${className} shrink-0 justify-around border-t border-white/10 pt-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))] md:w-12 md:flex-col md:items-center md:justify-start md:gap-2 md:border-0 md:pt-3 md:pb-0`}
       style={{ background: RAIL }}
     >
       <button onClick={() => onTab("home")} title={company?.name} className="mb-2 hidden rounded-[30%] md:block ring-2 ring-white/20 transition hover:ring-white/50">
-        <CompanyLogo company={company} size={38} />
+        <CompanyLogo company={company} size={30} />
       </button>
       <RailButton active={tab === "home"} onClick={() => onTab("home")} icon="home" label="Home" dot={homeUnread} />
       <RailButton active={tab === "dms"} onClick={() => onTab("dms")} icon="dms" label="DMs" count={dmUnread} />
@@ -264,9 +304,9 @@ function Rail({ tab, onTab, className }: { tab: Tab; onTab: (t: Tab) => void; cl
 }
 
 const RailButton = ({ active, onClick, icon, label, count, dot }: { active: boolean; onClick: () => void; icon: IconName; label: string; count?: number; dot?: boolean }) => (
-  <button onClick={onClick} className="group flex flex-1 flex-col items-center gap-1 text-[11px] font-semibold md:flex-none">
+  <button onClick={onClick} title={label} className="group flex flex-1 flex-col items-center gap-1 text-[11px] font-semibold md:flex-none">
     <span
-      className={`relative flex h-10 w-10 items-center justify-center rounded-xl transition ${
+      className={`relative flex h-10 w-10 items-center justify-center rounded-xl transition md:h-9 md:w-9 ${
         active ? "bg-white/20 text-white" : "text-white/70 group-hover:bg-white/10 group-hover:text-white"
       }`}
     >
@@ -278,7 +318,7 @@ const RailButton = ({ active, onClick, icon, label, count, dot }: { active: bool
       )}
       {!count && dot && <span className="absolute top-0.5 right-0.5 h-2 w-2 rounded-full bg-white" style={railRing} />}
     </span>
-    <span className={active ? "text-white" : "text-white/70 group-hover:text-white"}>{label}</span>
+    <span className={`md:sr-only ${active ? "text-white" : "text-white/70 group-hover:text-white"}`}>{label}</span>
   </button>
 );
 
@@ -469,11 +509,16 @@ function Sidebar({ tab, className }: { tab: Tab; className: string }) {
           </div>
           {notifPerm === "default" && (
             <button
-              onClick={() => Notification.requestPermission().then(setNotifPerm)}
+              onClick={() =>
+                Notification.requestPermission().then((p) => {
+                  setNotifPerm(p);
+                  enablePush();
+                })
+              }
               className="mt-3 flex w-full items-center gap-2 rounded-xl border border-tm-line bg-white px-3 py-2 text-left text-xs text-zinc-600 transition hover:bg-tm-surface"
             >
               <Icon name="bell" size={14} />
-              Enable desktop notifications for DMs and mentions
+              Enable notifications for DMs, mentions and calls, even when {APP_NAME} is closed
             </button>
           )}
           {starred.length > 0 && <Section title="Starred">{starred.map(renderItem)}</Section>}

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { supabase, displayName, type Channel, type Membership, type Message, type Webhook } from "@/lib/supabase";
 import { timeOf, fileSize } from "@/lib/format";
-import { Avatar, Modal, RowSkeleton, StatusBadge, Tabs, btn, btnGhost, input } from "../ui";
+import { Avatar, Modal, RowSkeleton, SidePanel, StatusBadge, Tabs, btn, btnGhost, input } from "../ui";
 import { useChat } from "./store";
 
 const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9_\s-]/g, "");
@@ -169,7 +169,7 @@ export function NewDM({ onClose }: { onClose: () => void }) {
 type Tab = "about" | "members" | "pinned" | "files" | "integrations";
 
 export function ChannelDetails({ channel, onClose }: { channel: Channel; onClose: () => void }) {
-  const { me, profiles, online, away, memberships, reload, setActive, updateMembership, channelTitle } = useChat();
+  const { me, profiles, online, away, memberships, reload, setActive, updateMembership, channelTitle, showMember } = useChat();
   const [tab, setTab] = useState<Tab>("about");
   const [members, setMembers] = useState<string[]>([]);
   const [topic, setTopic] = useState(channel.topic);
@@ -223,18 +223,6 @@ export function ChannelDetails({ channel, onClose }: { channel: Channel; onClose
     onClose();
   }
 
-  if (adding)
-    return (
-      <Modal title={`Add people to #${channel.name}`} onClose={() => setAdding(null)}>
-        <PeoplePicker exclude={members} picked={adding} setPicked={setAdding} />
-        <div className="mt-4 flex justify-end">
-          <button className={btn} disabled={!adding.length} onClick={addPeople}>
-            Add
-          </button>
-        </div>
-      </Modal>
-    );
-
   const tabs: [Tab, string][] = [
     ["about", "About"],
     ["members", `Members ${members.length || ""}`],
@@ -244,7 +232,7 @@ export function ChannelDetails({ channel, onClose }: { channel: Channel; onClose
   if (!isDM) tabs.push(["integrations", "Integrations"]);
 
   return (
-    <Modal wide title={isDM ? channelTitle(channel) : `${channel.kind === "private" ? "🔒" : "#"} ${channel.name}`} onClose={onClose}>
+    <SidePanel wide title={isDM ? channelTitle(channel) : `${channel.kind === "private" ? "🔒" : "#"} ${channel.name}`} onClose={onClose}>
       <Tabs tabs={tabs} value={tab} onChange={setTab} />
       <div className="tm-fade min-h-64" key={tab}>
         {tab === "about" && (
@@ -310,13 +298,16 @@ export function ChannelDetails({ channel, onClose }: { channel: Channel; onClose
                 + Add people
               </button>
             )}
-            <ul className="max-h-80 space-y-0.5 overflow-y-auto">
+            <ul className="space-y-0.5">
               {members.map((id) => (
-                <li key={id} className="flex items-center gap-2.5 rounded-xl px-2 py-1.5">
-                  <Avatar profile={profiles[id]} size={30} online={online.has(id)} away={away.has(id)} />
-                  <span className="font-medium">{displayName(profiles[id])}</span>
-                  {id === me.id && <span className="text-sm text-zinc-400">(you)</span>}
-                  <StatusBadge profile={profiles[id]} withText />
+                <li key={id}>
+                  {/* Opens the person's profile in the pane in place of these details */}
+                  <button onClick={() => showMember(id)} className="flex w-full items-center gap-2.5 rounded-xl px-2 py-1.5 text-left transition hover:bg-tm-surface">
+                    <Avatar profile={profiles[id]} size={30} online={online.has(id)} away={away.has(id)} />
+                    <span className="font-medium">{displayName(profiles[id])}</span>
+                    {id === me.id && <span className="text-sm text-zinc-400">(you)</span>}
+                    <StatusBadge profile={profiles[id]} withText />
+                  </button>
                 </li>
               ))}
             </ul>
@@ -327,7 +318,17 @@ export function ChannelDetails({ channel, onClose }: { channel: Channel; onClose
         {tab === "files" && <FilesList channelId={channel.id} />}
         {tab === "integrations" && <Webhooks channelId={channel.id} />}
       </div>
-    </Modal>
+      {adding && (
+        <Modal title={`Add people to #${channel.name}`} onClose={() => setAdding(null)}>
+          <PeoplePicker exclude={members} picked={adding} setPicked={setAdding} />
+          <div className="mt-4 flex justify-end">
+            <button className={btn} disabled={!adding.length} onClick={addPeople}>
+              Add
+            </button>
+          </div>
+        </Modal>
+      )}
+    </SidePanel>
   );
 }
 

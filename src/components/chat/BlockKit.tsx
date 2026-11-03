@@ -9,7 +9,7 @@ const safeUrl = (u?: string) => (u && /^https?:\/\//i.test(u) ? u : undefined);
 
 // Plain text is escaped by the same renderer, without mention/channel linking
 const T = ({ t, className = "" }: { t?: Text; className?: string }) =>
-  t ? <span className={className} dangerouslySetInnerHTML={{ __html: renderBody(t.text ?? "", none, none) }} /> : null;
+  t ? <span className={className} dangerouslySetInnerHTML={{ __html: renderBody(t.text ?? "", new Map(), none) }} /> : null;
 
 // Renders the Block Kit subset in Block; unknown block types are skipped
 export default function BlockKit({ blocks }: { blocks: Block[] }) {

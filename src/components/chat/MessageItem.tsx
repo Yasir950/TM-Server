@@ -2,10 +2,10 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase, displayName, mentionsMe, type Attachment, type Message, type Reaction } from "@/lib/supabase";
-import { renderBody, timeOf, fileSize, toMrkdwn } from "@/lib/format";
+import { renderBody, timeOf, fileSize, toMrkdwn, callLength } from "@/lib/format";
 import BlockKit from "./BlockKit";
-import { Avatar, EmojiPopover, Mark, StatusBadge, useSignedUrl } from "../ui";
-import { Icon } from "../icons";
+import { Avatar, EmojiPopover, Mark, StatusBadge, mentionUsers, useSignedUrl } from "../ui";
+import { Icon, type IconName } from "../icons";
 import { useChat } from "./store";
 import { toggleSaved, useSavedIds } from "./useMessages";
 import { EditorContent } from "@tiptap/react";
@@ -36,6 +36,7 @@ export default function MessageItem({ msg, reactions, grouped, inThread, highlig
   const menuRef = useRef<HTMLDivElement>(null);
   const author = profiles[msg.user_id];
   const mine = msg.user_id === me.id && !msg.bot_name;
+  const callLog = msg.bot_name ? undefined : msg.blocks?.find((b) => b.type === "call");
   const saved = savedIds?.has(msg.id);
 
   useEffect(() => {
@@ -46,9 +47,8 @@ export default function MessageItem({ msg, reactions, grouped, inThread, highlig
   }, [menu]);
 
   const html = useMemo(() => {
-    const users = new Set(Object.values(profiles).map((p) => p.username.toLowerCase()));
     const chans = new Set(Object.values(channels).map((c) => (c.name ?? "").toLowerCase()));
-    return renderBody(msg.body, users, chans);
+    return renderBody(msg.body, mentionUsers(profiles), chans);
   }, [msg.body, profiles, channels]);
 
   const byEmoji = useMemo(() => {
@@ -63,6 +63,13 @@ export default function MessageItem({ msg, reactions, grouped, inThread, highlig
     setMenu(false);
     if (confirm("Delete this message? This can't be undone."))
       await supabase.from("messages").update({ deleted_at: new Date().toISOString(), body: "", attachments: [] }).eq("id", msg.id);
+  }
+
+  // The query builder is lazy: it only sends the request once awaited
+  async function togglePin() {
+    setMenu(false);
+    const { error } = await supabase.rpc("toggle_pin", { p_id: msg.id });
+    if (error) alert(`Couldn't ${msg.pinned_at ? "unpin" : "pin"} this message: ${error.message}`);
   }
 
   function copyLink() {
@@ -89,7 +96,7 @@ export default function MessageItem({ msg, reactions, grouped, inThread, highlig
       id={`msg-${msg.id}`}
       className={`group relative flex gap-3 px-6 transition-colors duration-300 hover:bg-tm-surface/80 ${grouped ? "py-0.5" : "pt-2.5 pb-1"} ${
         mentionsMe(msg, me.id) && !mine ? "bg-tm-green-light/50 shadow-[inset_3px_0_0_var(--color-tm-green)]" : ""
-      } ${msg.pinned_at ? "bg-amber-50/60" : ""} ${highlight ? "bg-tm-blue-light" : ""}`}
+      } ${highlight ? "bg-tm-blue-light" : msg.pinned_at ? "bg-amber-50/60" : ""}`}
       onMouseLeave={() => setPicker(false)}
     >
       <div className="w-9 shrink-0">
@@ -105,7 +112,9 @@ export default function MessageItem({ msg, reactions, grouped, inThread, highlig
       </div>
       <div className="min-w-0 flex-1">
         {msg.pinned_at && (
-          <div className="mb-0.5 text-xs text-amber-700">📌 Pinned by {displayName(profiles[msg.pinned_by ?? ""])}</div>
+          <div className="mb-0.5 flex items-center gap-1 text-xs text-zinc-500">
+            <Icon name="pin" size={12} /> Pinned by {displayName(profiles[msg.pinned_by ?? ""])}
+          </div>
         )}
         {msg.also_in_channel && !inThread && (
           <button onClick={openThread} className="mb-0.5 text-xs text-zinc-400 hover:text-tm-blue">
@@ -133,7 +142,11 @@ export default function MessageItem({ msg, reactions, grouped, inThread, highlig
             {msg.edited_at && <span className="ml-1 text-xs text-zinc-400">(edited)</span>}
           </div>
         )}
-        {msg.blocks && msg.blocks.length > 0 && !editing && <BlockKit blocks={msg.blocks} />}
+        {callLog ? (
+          <CallCard duration={callLog.duration} people={callLog.people} />
+        ) : (
+          msg.blocks && msg.blocks.length > 0 && !editing && <BlockKit blocks={msg.blocks} />
+        )}
         {firstLink && !editing && <Unfurl url={firstLink} />}
         {msg.attachments.length > 0 && (
           <div className="mt-1.5 flex flex-wrap gap-2">
@@ -185,14 +198,14 @@ export default function MessageItem({ msg, reactions, grouped, inThread, highlig
             </ToolBtn>
             {menu && (
               <div className="tm-pop tm-float absolute top-9 right-0 z-30 w-52 rounded-xl bg-white p-1 text-sm">
-                <MenuBtn onClick={copyLink}>🔗 Copy link</MenuBtn>
-                <MenuBtn onClick={() => { markUnread(msg); setMenu(false); }}>● Mark unread</MenuBtn>
-                <MenuBtn onClick={() => { supabase.rpc("toggle_pin", { p_id: msg.id }); setMenu(false); }}>📌 {msg.pinned_at ? "Unpin" : "Pin to channel"}</MenuBtn>
+                <MenuBtn icon="link" onClick={copyLink}>Copy link</MenuBtn>
+                <MenuBtn icon="unread" onClick={() => { markUnread(msg); setMenu(false); }}>Mark unread</MenuBtn>
+                <MenuBtn icon="pin" onClick={togglePin}>{msg.pinned_at ? "Unpin from channel" : "Pin to channel"}</MenuBtn>
                 {mine && (
                   <>
                     <div className="my-1 h-px bg-tm-line" />
-                    <MenuBtn onClick={() => { setEditing(true); setMenu(false); }}>✏️ Edit message</MenuBtn>
-                    <MenuBtn onClick={remove} danger>🗑️ Delete message</MenuBtn>
+                    {!callLog && <MenuBtn icon="pencil" onClick={() => { setEditing(true); setMenu(false); }}>Edit message</MenuBtn>}
+                    <MenuBtn icon="trash" onClick={remove} danger>Delete message</MenuBtn>
                   </>
                 )}
               </div>
@@ -247,14 +260,50 @@ function EditBox({ msg, onClose }: { msg: Message; onClose: () => void }) {
   );
 }
 
+// Summary of a finished call: answered or missed, how long it ran and who was in it.
+// Calls logged before attendees were recorded have no people and show as ended.
+function CallCard({ duration, people }: { duration: number; people?: string[] }) {
+  const { profiles } = useChat();
+  const missed = people?.length === 1;
+  const shown = people?.slice(0, 4) ?? [];
+  const extra = (people?.length ?? 0) - shown.length;
+  const names = people?.map((id) => displayName(profiles[id])).join(", ");
+  return (
+    <div className="mt-1.5 flex w-[22rem] max-w-full items-center gap-3 rounded-2xl border border-tm-line bg-white p-3 shadow-sm">
+      <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${missed ? "bg-red-50 text-red-500" : "bg-tm-green-light text-tm-green"}`}>
+        <Icon name={missed ? "phoneOff" : "phone"} size={18} />
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="text-sm font-semibold text-zinc-900">{missed ? "Missed call" : "Call ended"}</div>
+        <div className="truncate text-xs text-zinc-500">
+          {missed ? "No one joined" : `${callLength(duration)}${people ? ` · ${people.length} participants` : ""}`}
+        </div>
+      </div>
+      {shown.length > 0 && (
+        <div className="flex shrink-0 -space-x-2" title={names}>
+          {shown.map((id) => (
+            <span key={id} className="rounded-[30%] ring-2 ring-white">
+              <Avatar profile={profiles[id]} size={26} />
+            </span>
+          ))}
+          {extra > 0 && (
+            <span className="flex h-[26px] min-w-[26px] items-center justify-center rounded-[30%] bg-tm-surface px-1 text-[11px] font-semibold text-zinc-600 ring-2 ring-white">+{extra}</span>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 const ToolBtn = (p:{ onClick: () => void; title: string; children: React.ReactNode }) => (
   <button onClick={p.onClick} title={p.title} className="flex h-7 min-w-7 items-center justify-center rounded-lg px-1.5 text-sm transition hover:bg-tm-surface">
     {p.children}
   </button>
 );
 
-const MenuBtn = (p: { onClick: () => void; danger?: boolean; children: React.ReactNode }) => (
-  <button onClick={p.onClick} className={`block w-full rounded-lg px-3 py-1.5 text-left transition ${p.danger ? "text-red-600 hover:bg-red-50" : "hover:bg-tm-blue-light hover:text-tm-blue-dark"}`}>
+const MenuBtn = (p: { onClick: () => void; icon: IconName; danger?: boolean; children: React.ReactNode }) => (
+  <button onClick={p.onClick} className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-1.5 text-left transition ${p.danger ? "text-red-600 hover:bg-red-50" : "hover:bg-tm-blue-light hover:text-tm-blue-dark"}`}>
+    <Icon name={p.icon} size={15} className="opacity-70" />
     {p.children}
   </button>
 );
@@ -262,11 +311,20 @@ const MenuBtn = (p: { onClick: () => void; danger?: boolean; children: React.Rea
 function ReplyLink({ msg, onOpen }: { msg: Message; onOpen: () => void }) {
   const fresh = useChat().threadUnread[msg.id]?.unread;
   return (
-    <button onClick={onOpen} className="mt-1 flex items-center gap-2 rounded-lg px-1.5 py-0.5 text-sm font-semibold text-tm-blue not-italic transition hover:bg-white">
-      {msg.reply_count} {msg.reply_count === 1 ? "reply" : "replies"}
-      {!!fresh && <span className="tm-pop rounded-full bg-tm-green px-1.5 py-px text-[11px] font-bold text-white">{fresh} new</span>}
-      {msg.last_reply_at && <span className="font-normal text-zinc-400">Last reply {timeOf(msg.last_reply_at)}</span>}
-    </button>
+    // Hangs off the message on an elbow connector, indented, so it reads as replies to it rather than a new line of chat
+    <div className="flex items-start pl-1">
+      <span className="mr-1.5 h-3 w-3 shrink-0 rounded-bl-md border-b-2 border-l-2 border-zinc-200" />
+      <button
+        onClick={onOpen}
+        className="group/reply -mt-0.5 flex min-w-0 items-center gap-1.5 rounded-md px-1 text-[13px] leading-5 not-italic transition hover:bg-white"
+      >
+        <span className="font-semibold text-tm-blue group-hover/reply:underline">
+          {msg.reply_count} {msg.reply_count === 1 ? "reply" : "replies"}
+        </span>
+        {!!fresh && <span className="tm-pop rounded-full bg-tm-green px-1.5 py-px text-[11px] font-bold text-white">{fresh} new</span>}
+        {msg.last_reply_at && <span className="truncate text-xs text-zinc-400">· Last reply {timeOf(msg.last_reply_at)}</span>}
+      </button>
+    </div>
   );
 }
 

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { EditorContent, type Editor } from "@tiptap/react";
-import { supabase, displayName, type Attachment, type Message } from "@/lib/supabase";
+import { supabase, displayName, type Attachment, type Message, type Profile } from "@/lib/supabase";
 import { clock, fileSize, toMrkdwn } from "@/lib/format";
 import { Avatar, EmojiPopover } from "../ui";
 import { Icon, type IconName } from "../icons";
@@ -21,6 +21,9 @@ type Props = {
 };
 
 const FORMAT_KEY = "tm:formatbar";
+
+// @here is still understood when typed; the picker offers the one name for it
+const GROUP_MENTIONS = [{ username: "channel", hint: "Notify everyone in this channel" }];
 
 export default function Composer({ channelId, parentId, placeholder, onSent, onTyping, alsoSendLabel }: Props) {
   const [alsoSend, setAlsoSend] = useState(false);
@@ -60,10 +63,14 @@ export default function Composer({ channelId, parentId, placeholder, onSent, onT
     else localStorage.removeItem(draftKey);
   }, [text, draftKey]);
 
-  const suggestions = mention
-    ? Object.values(profiles)
-        .filter((p) => (p.username + " " + p.full_name).toLowerCase().includes(mention.q.toLowerCase()))
-        .slice(0, 6)
+  // Whole-channel mentions first (not in DMs), then people
+  const suggestions: { username: string; profile?: Profile; hint: string }[] = mention
+    ? [
+        ...(channels[channelId]?.kind === "dm" ? [] : GROUP_MENTIONS).filter((g) => g.username.startsWith(mention.q.toLowerCase())),
+        ...Object.values(profiles)
+          .filter((p) => (p.username + " " + p.full_name).toLowerCase().includes(mention.q.toLowerCase()))
+          .map((p) => ({ username: p.username, profile: p, hint: `@${p.username}` })),
+      ].slice(0, 6)
     : [];
   const commands = /^\/\w*$/.test(text) ? COMMANDS.filter(([c]) => c.startsWith(text.toLowerCase())) : [];
 
@@ -208,18 +215,24 @@ export default function Composer({ channelId, parentId, placeholder, onSent, onT
       )}
       {suggestions.length > 0 && (
         <ul className="tm-pop tm-float absolute bottom-full left-5 z-10 mb-1 w-72 overflow-hidden rounded-xl bg-white p-1">
-          {suggestions.map((p, i) => (
-            <li key={p.id}>
+          {suggestions.map((s, i) => (
+            <li key={s.username}>
               <button
                 onMouseDown={(e) => {
                   e.preventDefault();
-                  pickMention(p.username);
+                  pickMention(s.username);
                 }}
                 className={`flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-left text-sm transition ${i === sel ? "bg-tm-blue text-white" : ""}`}
               >
-                <Avatar profile={p} size={20} />
-                <span className="font-semibold">{displayName(p)}</span>
-                <span className={i === sel ? "text-white/80" : "text-zinc-500"}>@{p.username}</span>
+                {s.profile ? (
+                  <Avatar profile={s.profile} size={20} />
+                ) : (
+                  <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full ${i === sel ? "bg-white/20" : "bg-tm-blue-light text-tm-blue"}`}>
+                    <Icon name="bell" size={12} />
+                  </span>
+                )}
+                <span className="font-semibold">{s.profile ? displayName(s.profile) : `@${s.username}`}</span>
+                <span className={`truncate ${i === sel ? "text-white/80" : "text-zinc-500"}`}>{s.hint}</span>
               </button>
             </li>
           ))}

@@ -9,7 +9,22 @@ const esc = (s: string) =>
 
 const linkAttrs = 'target="_blank" rel="noopener noreferrer" class="tm-link"';
 
-function inline(s: string, usernames: Set<string>, channels: Set<string>) {
+// What a rendered @mention shows: keyed by lowercased username
+export type MentionUser = { name: string; avatar?: string | null; color: string };
+export type MentionUsers = ReadonlyMap<string, MentionUser>;
+
+// Sized inline so the chip can't inherit image/layout rules from wherever the HTML lands
+const CHIP = "display:inline-flex;align-items:center;gap:4px;padding:1px 6px 1px 2px;border-radius:999px;vertical-align:middle;white-space:nowrap;line-height:20px";
+const AVATAR = "display:inline-flex;flex:none;align-items:center;justify-content:center;width:20px;height:20px;max-width:20px;border-radius:50%;object-fit:cover;color:#fff;font-size:10px;font-weight:600;line-height:1";
+
+const mentionChip = (handle: string, u: MentionUser) =>
+  `<span class="tm-mention" style="${CHIP}" title="${esc(u.name)}">` +
+  (u.avatar
+    ? `<img src="${esc(u.avatar)}" alt="" style="${AVATAR}" />`
+    : `<span style="${AVATAR};background:${esc(u.color)}">${esc(u.name.charAt(0).toUpperCase())}</span>`) +
+  `@${handle}</span>`;
+
+function inline(s: string, usernames: MentionUsers, channels: Set<string>, editor: boolean) {
   // Code and links are swapped for placeholders so the emphasis rules can't reach inside them
   const stash: string[] = [];
   const keep = (html: string) => `\u0001${stash.push(html) - 1}\u0002`;
@@ -20,11 +35,11 @@ function inline(s: string, usernames: Set<string>, channels: Set<string>) {
     .replace(/(^|[\s(>*_~\u0002])\*([^*\n]+)\*/g, "$1<strong>$2</strong>")
     .replace(/(^|[\s(>*_~\u0002])_([^_\n]+)_/g, "$1<em>$2</em>")
     .replace(/(^|[\s(>*_~\u0002])~([^~\n]+)~/g, "$1<s>$2</s>")
-    .replace(/(^|\s)@([a-z0-9_.-]+)/gi, (m, pre, name) =>
-      usernames.has(name.toLowerCase()) || name === "channel" || name === "here"
-        ? `${pre}<span class="tm-mention">@${name}</span>`
-        : m,
-    )
+    .replace(/(^|\s)@([a-z0-9_.-]+)/gi, (m, pre, name) => {
+      const u = usernames.get(name.toLowerCase());
+      if (u && !editor) return pre + mentionChip(name, u);
+      return u || name === "channel" || name === "here" ? `${pre}<span class="tm-mention">@${name}</span>` : m;
+    })
     .replace(/(^|\s)#([a-z0-9_-]+)/gi, (m, pre, name) =>
       channels.has(name.toLowerCase()) ? `${pre}<span class="tm-mention" data-channel="${name}">#${name}</span>` : m,
     )
@@ -57,8 +72,8 @@ const LIST_LINE = /^( *)(?:[-•]|(\d+)\.) (.*)$/;
 const QUOTE_LINE = /^&gt;(?: |$)/;
 
 // editor: emit the HTML the rich editor parses (one <p> per line) instead of display markup
-function render(body: string, usernames: Set<string>, channels: Set<string>, editor: boolean) {
-  const fmt = (s: string) => inline(s, usernames, channels);
+function render(body: string, usernames: MentionUsers, channels: Set<string>, editor: boolean) {
+  const fmt = (s: string) => inline(s, usernames, channels, editor);
   const parts = esc(body).split(/```/);
   let html = "";
   parts.forEach((part, i) => {
@@ -100,10 +115,21 @@ function render(body: string, usernames: Set<string>, channels: Set<string>, edi
   return html;
 }
 
-export const renderBody = (body: string, usernames: Set<string>, channels: Set<string>) => render(body, usernames, channels, false);
+export const renderBody = (body: string, usernames: MentionUsers, channels: Set<string>) => render(body, usernames, channels, false);
+
+// mrkdwn -> one line of plain text, for previews
+export const plainText = (body: string) =>
+  body
+    .replace(/```/g, "")
+    .replace(/\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g, "$1")
+    .replace(/`([^`\n]+)`/g, "$1")
+    .replace(/(^|[\s(])([*_~])([^*_~\n]+)\2/g, "$1$3")
+    .replace(/^(&gt;|>) ?/gm, "")
+    .replace(/\s+/g, " ")
+    .trim();
 
 // mrkdwn -> HTML for loading a draft or an edit into the rich editor (mentions stay plain text there)
-export const toEditorHtml = (body: string) => render(body, new Set(), new Set(), true);
+export const toEditorHtml = (body: string) => render(body, new Map(), new Set(), true);
 
 // Rich editor document -> mrkdwn ----------------------------------------------------------------
 
@@ -198,6 +224,14 @@ export function dayLabel(iso: string) {
 
 export const fileSize = (n: number) =>
   n < 1024 ? `${n} B` : n < 1048576 ? `${(n / 1024).toFixed(1)} KB` : `${(n / 1048576).toFixed(1)} MB`;
+
+// Call length as "45s", "2m 4s" or "1h 3m"
+export const callLength = (sec: number) => {
+  const s = Math.max(0, Math.round(sec));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  return h ? `${h}h ${m}m` : m ? `${m}m ${s % 60}s` : `${s}s`;
+};
 
 export const clock = (sec: number) => {
   const s = Math.max(0, Math.floor(sec));

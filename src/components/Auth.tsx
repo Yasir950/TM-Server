@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { signOut } from "@/lib/push";
 import { Logo, btn, input } from "./ui";
 import { Icon } from "./icons";
 import { APP_NAME } from "@/lib/brand";
@@ -133,7 +134,7 @@ export default function Auth({ recovery, onDone }: { recovery?: boolean; onDone?
       </form>
       <p className="mt-6 text-sm text-zinc-500">
         {mode === "reset" ? (
-          <button className="font-semibold text-tm-blue hover:underline" onClick={() => supabase.auth.signOut()}>
+          <button className="font-semibold text-tm-blue hover:underline" onClick={signOut}>
             Cancel and sign out
           </button>
         ) : mode === "forgot" ? (

@@ -63,6 +63,15 @@ body {
   from { opacity: 0; transform: translateX(16px); }
   to { opacity: 1; transform: none; }
 }
+/* A call reaction pops in, floats up and fades out */
+@keyframes tm-rise {
+  0% { opacity: 0; transform: translateY(6px) scale(0.6); }
+  15% { opacity: 1; transform: translateY(0) scale(1.15); }
+  25% { transform: scale(1); }
+  80% { opacity: 1; transform: translateY(-10px); }
+  100% { opacity: 0; transform: translateY(-18px); }
+}
+.tm-rise { animation: tm-rise 3s ease-out both; }
 @keyframes tm-dot {
   0%, 80%, 100% { opacity: 0.25; transform: translateY(0); }
   40% { opacity: 1; transform: translateY(-2px); }
@@ -76,7 +85,7 @@ body {
 .tm-raised { outline: 1px solid var(--color-tm-line); outline-offset: -1px; }
 .tm-float { outline: 1px solid #e2e6ed; outline-offset: -1px; }
 @media (prefers-reduced-motion: reduce) {
-  .tm-fade-up, .tm-fade, .tm-pop, .tm-slide-in, .tm-dot { animation: none; }
+  .tm-fade-up, .tm-fade, .tm-pop, .tm-slide-in, .tm-dot, .tm-rise { animation: none; }
 }
 
 /* Formatted message bodies and the rich composer share these */

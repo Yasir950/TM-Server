@@ -4,7 +4,8 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import type { Session } from "@supabase/supabase-js";
 import { supabase, displayName, inDnd, meetingEnd, meetingLive, mentionsMe, type Channel, type Company, type Meeting, type Member, type Membership, type Message, type Profile } from "@/lib/supabase";
 import { APP_NAME, call } from "@/lib/brand";
-import { timeOf } from "@/lib/format";
+import { plainText, timeOf } from "@/lib/format";
+import { enablePush, focusApp } from "@/lib/push";
 import { AppSkeleton } from "../ui";
 
 type Unread = Record<string, { unread: number; mentions: number }>;
@@ -15,6 +16,8 @@ export type View = "threads" | "saved" | "search" | "reminders" | "meetings" | "
 export type Thread = { id: string; channelId: string };
 // meeting: set when the ring is a scheduled meeting starting, rather than someone calling
 export type Ring = { channelId: string; from: string; title: string; meeting?: string };
+// In-app notification card; from is the sender's user id (absent for bots)
+export type Toast = { id: string; title: string; body: string; from?: string; onOpen: () => void };
 
 type ChatState = {
   me: Profile;
@@ -24,9 +27,13 @@ type ChatState = {
   companies: Company[];
   members: Record<string, Member>;
   switchCompany: (id: string) => Promise<void>;
-  // User whose details card is open
+  // The docked right pane shows one of: a thread, a member's profile, or a channel's details
+  // User whose profile is open
   memberCard: string | null;
   showMember: (id: string | null) => void;
+  // Channel whose details are open
+  channelDetails: string | null;
+  showChannelDetails: (id: string | null) => void;
   channels: Record<string, Channel>;
   memberships: Record<string, Membership>;
   dmMembers: Record<string, string[]>;
@@ -45,6 +52,10 @@ type ChatState = {
   huddles: Record<string, string[]>;
   ring: Ring | null;
   huddleNotice: string | null;
+  // People rung for the current huddle in the last 30 seconds who haven't declined
+  ringing: Set<string>;
+  toasts: Toast[];
+  dismissToast: (id: string) => void;
   setHuddle: (channelId: string | null) => void;
   inviteToHuddle: (userIds: string[]) => void;
   dismissRing: (decline?: boolean) => void;
@@ -121,13 +132,19 @@ export function ChatProvider({ session, children }: { session: Session; children
   const [huddle, setHuddleState] = useState<string | null>(null);
   const [huddles, setHuddles] = useState<Record<string, string[]>>({});
   const [ring, setRing] = useState<Ring | null>(null);
+  // The browser notification shown for the current ring, closed when the ring ends
+  const ringNote = useRef<Notification | null>(null);
   const [huddleNotice, setHuddleNotice] = useState<string | null>(null);
+  // User id → when they were last rung for the current huddle
+  const [rung, setRung] = useState<Record<string, number>>({});
+  const [toasts, setToasts] = useState<Toast[]>([]);
   // Names of huddles this user was invited to in conversations they can't see
   const [huddleTitles, setHuddleTitles] = useState<Record<string, string>>({});
   const [company, setCompany] = useState<Company | null>(null);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [members, setMembers] = useState<Record<string, Member>>({});
   const [memberCard, setMemberCard] = useState<string | null>(null);
+  const [channelDetails, setChannelDetails] = useState<string | null>(null);
   const [allMeetings, setAllMeetings] = useState<Meeting[]>([]);
   const [loaded, setLoaded] = useState(false);
   // A conversation marked unread keeps its read cursor until the user navigates away
@@ -200,6 +217,8 @@ export function ChatProvider({ session, children }: { session: Session; children
       if (error) return alert(error.message);
       setActiveId(null);
       setThread(null);
+      setMemberCard(null);
+      setChannelDetails(null);
       setViewState(null);
       await reload();
     },
@@ -253,6 +272,7 @@ export function ChatProvider({ session, children }: { session: Session; children
     setHeldRead((h) => (h === id ? h : null));
     setActiveId(id);
     setThread(null);
+    setChannelDetails(null);
     setFocusId(focus);
     setViewState(null);
     if (id) localStorage.setItem("tm:active", id);
@@ -263,34 +283,91 @@ export function ChatProvider({ session, children }: { session: Session; children
     setViewState(v);
     setQuery(q);
     setThread(null);
+    setChannelDetails(null);
   }, []);
+
+  // Opening something in the right pane replaces whatever it showed
+  const openThread = useCallback((t: Thread | null) => {
+    setThread(t);
+    if (!t) return;
+    setMemberCard(null);
+    setChannelDetails(null);
+  }, []);
+  const showMember = useCallback((id: string | null) => {
+    setMemberCard(id);
+    if (!id) return;
+    setThread(null);
+    setChannelDetails(null);
+  }, []);
+  const showChannelDetails = useCallback((id: string | null) => {
+    setChannelDetails(id);
+    if (!id) return;
+    setThread(null);
+    setMemberCard(null);
+  }, []);
+
+  // Permalinks and notification clicks: ?c=channel&m=message[&t=thread] opens a conversation,
+  // ?ring=channel&from=caller&where=title shows the incoming-call dialog. True when a conversation was opened.
+  const openLink = useCallback(
+    (params: URLSearchParams) => {
+      const ringId = params.get("ring");
+      const from = params.get("from");
+      if (ringId && from && live.current.huddle !== ringId) {
+        const where = params.get("where") ?? `a ${call}`;
+        setHuddleTitles((t) => ({ ...t, [ringId]: where }));
+        setRing({ channelId: ringId, from, title: where });
+      }
+      const c = params.get("c");
+      if (!c) return false;
+      setActive(c, params.get("m"));
+      const t = params.get("t");
+      if (t) setThread({ id: t, channelId: c });
+      return true;
+    },
+    [setActive],
+  );
 
   useEffect(() => {
     // State is set after the async fetch resolves, not synchronously
     // eslint-disable-next-line react-hooks/set-state-in-effect
     reload().then(() => {
-      // A permalink (?c=channel&m=message) wins over the last opened conversation
+      // A link wins over the last opened conversation
       const params = new URLSearchParams(location.search);
-      const c = params.get("c");
-      if (c) {
-        setActiveId(c);
-        setFocusId(params.get("m"));
-        history.replaceState(null, "", "/");
-      } else setActiveId((cur) => cur ?? localStorage.getItem("tm:active"));
+      if (params.has("c") || params.has("ring")) history.replaceState(null, "", "/");
+      if (!openLink(params)) setActiveId((cur) => cur ?? localStorage.getItem("tm:active"));
     });
-  }, [reload]);
+  }, [reload, openLink]);
+
+  // Push notifications: keep this browser subscribed, and handle clicks on them (public/sw.js) while the app is open
+  useEffect(() => {
+    enablePush();
+    const onMessage = (e: MessageEvent) => {
+      if (e.data?.type === "open") openLink(new URL(e.data.url, location.origin).searchParams);
+    };
+    navigator.serviceWorker?.addEventListener("message", onMessage);
+    return () => navigator.serviceWorker?.removeEventListener("message", onMessage);
+  }, [uid, openLink]);
+
+  const dismissToast = useCallback((id: string) => setToasts((t) => t.filter((x) => x.id !== id)), []);
 
   // Global realtime: unread counts, previews, notifications, membership and profile changes
   useEffect(() => {
+    // A system notification when the app is in the background and allowed to; otherwise an in-app card
     const alert = (msg: Message, title: string, onOpen: () => void) => {
       chime();
-      if (!("Notification" in window) || Notification.permission !== "granted") return;
-      const n = new Notification(title, { body: msg.body.slice(0, 140) || "Sent an attachment", tag: msg.id });
-      n.onclick = () => {
-        window.focus();
-        onOpen();
-      };
+      const body = plainText(msg.body).slice(0, 140) || "Sent an attachment";
+      if (!document.hasFocus() && "Notification" in window && Notification.permission === "granted") {
+        const n = new Notification(title, { body, tag: msg.id, icon: profilesAvatar(msg) });
+        n.onclick = () => {
+          focusApp();
+          onOpen();
+        };
+        return;
+      }
+      setToasts((t) => [...t.slice(-2), { id: msg.id, title, body, from: msg.bot_name ? undefined : msg.user_id, onOpen }]);
+      setTimeout(() => dismissToast(msg.id), 7000);
     };
+    const profilesAvatar = (msg: Message) => (msg.bot_name ? undefined : live.current.profiles[msg.user_id]?.avatar_url) || "/asset/AppIcon.svg";
 
     // Replies in followed threads: refresh badges, and notify when the reply is new to this user
     const onThreadReply = async (msg: Message) => {
@@ -367,7 +444,7 @@ export function ChatProvider({ session, children }: { session: Session; children
       supabase.removeChannel(db);
       supabase.removeChannel(presence);
     };
-  }, [uid, reload, setActive, loadThreadUnread]);
+  }, [uid, reload, setActive, loadThreadUnread, dismissToast]);
 
   // Huddles: presence says who is in which huddle; broadcasts ring people and carry their replies
   useEffect(() => {
@@ -384,7 +461,10 @@ export function ChatProvider({ session, children }: { session: Session; children
         if (!r.to.includes(uid) || huddle === r.channelId) return;
         setHuddleTitles((t) => ({ ...t, [r.channelId]: r.title }));
         setRing({ channelId: r.channelId, from: r.from, title: r.title });
-        if (document.hasFocus() || inDnd(profiles[uid]) || !("Notification" in window) || Notification.permission !== "granted") return;
+        if (inDnd(profiles[uid])) return;
+        // The desktop app pops its window up out of the tray so the call dialog is seen
+        window.workchime?.ring();
+        if (document.hasFocus() || !("Notification" in window) || Notification.permission !== "granted") return;
         const n = new Notification(`${displayName(profiles[r.from])} is calling you`, {
           icon: "/asset/AppIcon.svg",
           body: `in ${r.title} · click to answer`,
@@ -392,14 +472,23 @@ export function ChatProvider({ session, children }: { session: Session; children
           requireInteraction: true,
         });
         n.onclick = () => {
-          window.focus();
+          focusApp();
           n.close();
         };
+        ringNote.current?.close();
+        ringNote.current = n;
         setTimeout(() => n.close(), 30_000);
       })
       .on("broadcast", { event: "decline" }, ({ payload }) => {
         const { huddle, profiles } = live.current;
-        if (payload.to === uid && payload.channelId === huddle) setHuddleNotice(`${displayName(profiles[payload.from])} declined`);
+        if (payload.to !== uid || payload.channelId !== huddle) return;
+        setHuddleNotice(`${displayName(profiles[payload.from])} declined`);
+        setRung((r) => Object.fromEntries(Object.entries(r).filter(([id]) => id !== payload.from)));
+      })
+      // The caller hung up before anyone answered
+      .on("broadcast", { event: "cancel" }, ({ payload }) => {
+        if (!Array.isArray(payload?.to) || !payload.to.includes(uid)) return;
+        setRing((r) => (r && !r.meeting && r.channelId === payload.channelId && r.from === payload.from ? null : r));
       })
       .subscribe((status) => {
         if (status === "SUBSCRIBED" && live.current.huddle) ch.track({ channel: live.current.huddle });
@@ -414,6 +503,13 @@ export function ChatProvider({ session, children }: { session: Session; children
     if (huddle) ch?.track({ channel: huddle });
     else ch?.untrack();
   }, [huddle]);
+
+  // The system notification for a call goes away with the call, however it stopped ringing
+  useEffect(() => {
+    if (ring) return;
+    ringNote.current?.close();
+    ringNote.current = null;
+  }, [ring]);
 
   useEffect(() => {
     if (!huddleNotice) return;
@@ -467,10 +563,11 @@ export function ChatProvider({ session, children }: { session: Session; children
           const where = m.channels?.kind === "dm" ? m.title : `#${m.channels?.name}`;
           setHuddleTitles((t) => ({ ...t, [m.channel_id]: where }));
           setRing({ channelId: m.channel_id, from: m.created_by, title: m.title, meeting: m.id });
+          if (!quiet) window.workchime?.ring();
           if (!canNotify || document.hasFocus()) continue;
           const n = new Notification(`📅 ${m.title} is starting`, { icon: "/asset/AppIcon.svg", body: "Click to join the call", tag: `meeting:${m.id}`, requireInteraction: true });
           n.onclick = () => {
-            window.focus();
+            focusApp();
             n.close();
           };
           setTimeout(() => n.close(), 30_000);
@@ -488,20 +585,40 @@ export function ChatProvider({ session, children }: { session: Session; children
       const c = channels[channelId];
       const title = !c ? (huddleTitles[channelId] ?? `a ${call}`) : c.kind === "dm" ? (dmMembers[channelId] ?? []).map((id) => displayName(profiles[id])).join(", ") : `#${c.name}`;
       huddleChannel()?.send({ type: "broadcast", event: "ring", payload: { to, channelId, from: uid, title } });
+      // Rings people whose app is closed, through Web Push
+      supabase.rpc("push_ring", { p_channel: channelId, p_to: to }).then();
+      // Their phone rings for 30 seconds; a newer ring of the same person outlives this one
+      const at = Date.now();
+      setRung((r) => ({ ...r, ...Object.fromEntries(to.map((id) => [id, at])) }));
+      setTimeout(() => setRung((r) => Object.fromEntries(Object.entries(r).filter(([, t]) => t !== at))), 30_000);
     },
     [uid, channels, dmMembers, profiles, huddleTitles],
   );
 
   const setHuddle = useCallback(
     (channelId: string | null) => {
+      // Hanging up before anyone answered stops the ringing on their end
+      const ringingNow = Object.keys(rung);
+      if (huddle && huddle !== channelId && ringingNow.length && !(huddles[huddle] ?? []).some((id) => id !== uid)) {
+        huddleChannel()?.send({ type: "broadcast", event: "cancel", payload: { to: ringingNow, channelId: huddle, from: uid } });
+        supabase.rpc("push_cancel_ring", { p_channel: huddle, p_to: ringingNow }).then();
+      }
       setHuddleState(channelId);
       setHuddleNotice(null);
+      setRung({});
       setRing((r) => (r?.channelId === channelId ? null : r));
-      // Starting a huddle in a DM calls the other people in it, unless a meeting there is already calling everyone
-      if (channelId && channels[channelId]?.kind === "dm" && !huddles[channelId]?.length && !meetings.some((m) => m.channel_id === channelId && meetingLive(m)))
-        ringHuddle(channelId, (dmMembers[channelId] ?? []).filter((id) => id !== uid));
+      // Starting a huddle calls the other people in the conversation, unless it's already running or a meeting there is already calling everyone
+      const c = channelId ? channels[channelId] : undefined;
+      if (!channelId || !c || huddles[channelId]?.length || meetings.some((m) => m.channel_id === channelId && meetingLive(m))) return;
+      if (c.kind === "dm") ringHuddle(channelId, (dmMembers[channelId] ?? []).filter((id) => id !== uid));
+      else
+        supabase
+          .from("channel_members")
+          .select("user_id")
+          .eq("channel_id", channelId)
+          .then(({ data }) => ringHuddle(channelId, (data ?? []).map((r) => r.user_id).filter((id) => id !== uid)));
     },
-    [uid, channels, dmMembers, huddles, meetings, ringHuddle],
+    [uid, huddle, rung, channels, dmMembers, huddles, meetings, ringHuddle],
   );
 
   const inviteToHuddle = useCallback((userIds: string[]) => {
@@ -556,6 +673,8 @@ export function ChatProvider({ session, children }: { session: Session; children
     [channels, channelTitle, huddleTitles],
   );
 
+  const ringing = useMemo(() => new Set(Object.keys(rung)), [rung]);
+
   const value = useMemo<ChatState | null>(
     () =>
       profiles[uid]
@@ -567,7 +686,9 @@ export function ChatProvider({ session, children }: { session: Session; children
             members,
             switchCompany,
             memberCard,
-            showMember: setMemberCard,
+            showMember,
+            channelDetails,
+            showChannelDetails,
             channels,
             memberships,
             dmMembers,
@@ -585,6 +706,9 @@ export function ChatProvider({ session, children }: { session: Session; children
             huddles,
             ring,
             huddleNotice,
+            ringing,
+            toasts,
+            dismissToast,
             setHuddle,
             inviteToHuddle,
             dismissRing,
@@ -592,7 +716,7 @@ export function ChatProvider({ session, children }: { session: Session; children
             meetings,
             reloadMeetings,
             setActive,
-            setThread,
+            setThread: openThread,
             setView,
             markRead,
             markUnread,
@@ -602,7 +726,7 @@ export function ChatProvider({ session, children }: { session: Session; children
             channelTitle,
           }
         : null,
-    [profiles, company, companies, members, switchCompany, memberCard, uid, channels, memberships, dmMembers, unread, threadUnread, previews, online, away, activeId, thread, focusId, view, query, huddle, huddles, ring, huddleNotice, setHuddle, inviteToHuddle, dismissRing, huddleName, meetings, reloadMeetings, setActive, setView, markRead, markUnread, markThreadRead, updateMembership, reload, channelTitle],
+    [profiles, company, companies, members, switchCompany, memberCard, showMember, channelDetails, showChannelDetails, openThread, uid, channels, memberships, dmMembers, unread, threadUnread, previews, online, away, activeId, thread, focusId, view, query, huddle, huddles, ring, huddleNotice, ringing, toasts, dismissToast, setHuddle, inviteToHuddle, dismissRing, huddleName, meetings, reloadMeetings, setActive, setView, markRead, markUnread, markThreadRead, updateMembership, reload, channelTitle],
   );
 
   if (!loaded || !value) return <AppSkeleton />;

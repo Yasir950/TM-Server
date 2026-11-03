@@ -4,12 +4,18 @@ import { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { supabase, displayName, activeStatus, type Profile } from "@/lib/supabase";
 import { APP_NAME, RAIL } from "@/lib/brand";
+import type { MentionUsers } from "@/lib/format";
 
 const palette = ["#1c75bc", "#39b54a", "#155a91", "#2d8a3a", "#4a90c9", "#5cb85c"];
+export const avatarColor = (profile?: Profile) => palette[(profile?.id.charCodeAt(0) ?? 0) % palette.length];
+
+// Lowercased username -> what an @mention chip shows
+export const mentionUsers = (profiles: Record<string, Profile>): MentionUsers =>
+  new Map(Object.values(profiles).map((p) => [p.username.toLowerCase(), { name: displayName(p), avatar: p.avatar_url, color: avatarColor(p) }]));
 
 export function Avatar({ profile, size = 36, online, away }: { profile?: Profile; size?: number; online?: boolean; away?: boolean }) {
   const name = displayName(profile);
-  const color = palette[(profile?.id.charCodeAt(0) ?? 0) % palette.length];
+  const color = avatarColor(profile);
   return (
     <div className="relative shrink-0" style={{ width: size, height: size }}>
       {profile?.avatar_url ? (
@@ -62,6 +68,23 @@ export function Logo({ height = 40 }: { height?: number }) {
 export function Mark({ size = 24, className = "" }: { size?: number; className?: string }) {
   // eslint-disable-next-line @next/next/no-img-element
   return <img src="/asset/AppIcon.svg" alt="" width={size} height={size} className={`shrink-0 select-none ${className}`} />;
+}
+
+// Docked right pane beside the conversation, like Slack's profile and channel details: the main view narrows to make room
+export function SidePanel({ title, onClose, children, wide }: { title: string; onClose: () => void; children: React.ReactNode; wide?: boolean }) {
+  return (
+    <aside
+      className={`tm-slide-in tm-raised flex min-w-0 flex-1 flex-col overflow-hidden bg-white max-md:pb-[env(safe-area-inset-bottom)] md:rounded-2xl lg:flex-none lg:shrink-0 ${wide ? "lg:w-[460px]" : "lg:w-[400px]"}`}
+    >
+      <header className="flex h-14 shrink-0 items-center gap-2 border-b border-tm-line px-3 md:px-5">
+        <h2 className="min-w-0 flex-1 truncate text-lg font-semibold">{title}</h2>
+        <button onClick={onClose} className="rounded-full p-1.5 text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-700" aria-label="Close">
+          ✕
+        </button>
+      </header>
+      <div className="flex-1 overflow-y-auto p-5">{children}</div>
+    </aside>
+  );
 }
 
 export function Modal({ title, onClose, children, wide }: { title: string; onClose: () => void; children: React.ReactNode; wide?: boolean }) {
@@ -175,14 +198,14 @@ export function AppSkeleton() {
   return (
     <div className="flex h-full flex-col" style={{ background: RAIL }} aria-busy="true" aria-label="Loading">
       <div className="flex h-12 shrink-0 items-center gap-4 px-4">
-        <div className="h-[38px] w-[38px] shrink-0 animate-pulse rounded-[25%] bg-white/15 motion-reduce:animate-none" />
+        <div className="h-8 w-8 shrink-0 animate-pulse rounded-[25%] bg-white/15 motion-reduce:animate-none" />
         <div className="mx-auto h-8 w-full max-w-xl animate-pulse rounded-xl bg-white/10 motion-reduce:animate-none" />
         <div className="h-[30px] w-[30px] shrink-0 animate-pulse rounded-[30%] bg-white/15 motion-reduce:animate-none" />
       </div>
       <div className="flex min-h-0 flex-1">
-        <div className="hidden w-[72px] shrink-0 flex-col items-center gap-4 pt-3 md:flex">
+        <div className="hidden w-12 shrink-0 flex-col items-center gap-2 pt-3 md:flex">
           {[0, 1, 2, 3].map((i) => (
-            <div key={i} className="h-10 w-10 animate-pulse rounded-xl bg-white/10 motion-reduce:animate-none" />
+            <div key={i} className="h-9 w-9 animate-pulse rounded-xl bg-white/10 motion-reduce:animate-none" />
           ))}
         </div>
         <div className="flex min-w-0 flex-1 bg-tm-surface md:gap-2 md:rounded-tl-2xl md:p-2">

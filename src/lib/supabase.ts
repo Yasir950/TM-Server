@@ -160,7 +160,9 @@ export type Block =
   | { type: "divider" }
   | { type: "context"; elements: (BkText | { type: "image"; image_url: string; alt_text?: string })[] }
   | { type: "image"; image_url: string; alt_text?: string; title?: BkText }
-  | { type: "actions"; elements: { type: "button"; text: BkText; url?: string; style?: "primary" | "danger" }[] };
+  | { type: "actions"; elements: { type: "button"; text: BkText; url?: string; style?: "primary" | "danger" }[] }
+  // Not Block Kit: the summary the last person out of a call posts (components/chat/Huddle.tsx)
+  | { type: "call"; duration: number; people?: string[] };
 
 export type Workflow = {
   id: string;

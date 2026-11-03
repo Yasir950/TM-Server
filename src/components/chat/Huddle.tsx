@@ -4,9 +4,10 @@ import { useEffect, useRef, useState } from "react";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import { supabase, displayName, inDnd, type Profile } from "@/lib/supabase";
 import { CALL, call } from "@/lib/brand";
+import { callLength } from "@/lib/format";
 import { Avatar, Modal, input } from "../ui";
 import { Icon } from "../icons";
-import { useChat } from "./store";
+import { useChat, type Ring } from "./store";
 
 // Mesh WebRTC: every participant connects to every other; Supabase Realtime carries the signaling.
 // People behind strict NATs or firewalls can only connect through a TURN relay (NEXT_PUBLIC_TURN_*).
@@ -23,10 +24,20 @@ const MIC = 0;
 const SCREEN = 1;
 const CAMERA = 2;
 
-type State = { muted: boolean; sharing: boolean; camera: boolean };
+type State = { muted: boolean; sharing: boolean; camera: boolean; hand: boolean };
 type Signal = { from: string; to: string; sdp?: RTCSessionDescriptionInit; ice?: RTCIceCandidateInit };
 type Peer = { pc: RTCPeerConnection; chain: Promise<void> };
-type Person = { key: string; user: string; state: State; streams: (MediaStream | null | undefined)[]; self?: boolean };
+type Reaction = { emoji: string; id: number };
+type Person = { key: string; user: string; state: State; streams: (MediaStream | null | undefined)[]; self?: boolean; reaction?: Reaction };
+
+const REACTIONS = ["👍", "❤️", "😂", "🎉", "👏", "😮", "🙏", "🔥"];
+
+// Shows a reaction over someone for three seconds; a newer one replaces it
+function flash(set: React.Dispatch<React.SetStateAction<Record<string, Reaction>>>, key: string, emoji: string) {
+  const id = Math.random();
+  set((r) => ({ ...r, [key]: { emoji, id } }));
+  setTimeout(() => set((r) => (r[key]?.id === id ? Object.fromEntries(Object.entries(r).filter(([k]) => k !== key)) : r)), 3000);
+}
 
 // Each join gets its own presence key, so a reload or a second tab is a fresh peer
 const tab = Math.random().toString(36).slice(2, 8);
@@ -70,6 +81,16 @@ const ringtone = () =>
 const ringback = () => tone([[440, 0, 1.2], [480, 0, 1.2]], 0.04);
 const joinSound = () => tone([[523, 0, 0.12], [784, 0.1, 0.2]], 0.08);
 const leaveSound = () => tone([[784, 0, 0.12], [523, 0.1, 0.2]], 0.08);
+const handSound = () => tone([[880, 0, 0.12], [1175, 0.1, 0.18]], 0.06);
+
+// Leaves a "Call happened" card in the conversation; the body is the notification and search fallback
+function logCall(channelId: string, userId: string, seconds: number, people: string[]) {
+  const body = people.length > 1 ? `📞 Call ended · ${callLength(seconds)}` : "📞 Missed call";
+  supabase
+    .from("messages")
+    .insert({ channel_id: channelId, user_id: userId, body, blocks: [{ type: "call", duration: Math.round(seconds), people }], attachments: [], mentions: [] })
+    .then(({ error }) => error && console.warn("huddle", error));
+}
 
 // True while the stream is carrying voice
 function useSpeaking(stream: MediaStream | null | undefined, live: boolean) {
@@ -116,16 +137,26 @@ function Sound({ stream }: { stream: MediaStream }) {
 function Face({ p, profile }: { p: Person; profile?: Profile }) {
   const speaking = useSpeaking(p.streams[MIC], !p.state.muted);
   return (
-    <span className={`relative rounded-[30%] ring-2 ring-offset-1 transition ${speaking ? "ring-tm-green" : "ring-transparent"}`} title={displayName(profile)}>
-      <Avatar profile={profile} size={30} />
+    <span className={`relative rounded-[30%] ring-2 ring-offset-2 transition ${speaking ? "ring-tm-green" : p.state.hand ? "ring-amber-400" : "ring-transparent"}`} title={displayName(profile)}>
+      <Avatar profile={profile} size={44} />
+      {p.state.hand && (
+        <span className="absolute -top-2 -left-2 flex h-5 w-5 items-center justify-center rounded-full bg-amber-400 text-white" title="Hand raised">
+          <Icon name="hand" size={11} />
+        </span>
+      )}
       {p.state.muted && (
-        <span className="absolute -right-1.5 -bottom-1.5 flex h-4 w-4 items-center justify-center rounded-full border border-tm-line bg-white text-zinc-600">
-          <Icon name="micOff" size={8} />
+        <span className="absolute -right-2 -bottom-2 flex h-5 w-5 items-center justify-center rounded-full border border-tm-line bg-white text-zinc-600">
+          <Icon name="micOff" size={10} />
         </span>
       )}
       {p.state.sharing && (
-        <span className="absolute -top-1.5 -right-1.5 flex h-4 w-4 items-center justify-center rounded-full border border-tm-line bg-white text-zinc-600">
-          <Icon name="monitor" size={8} />
+        <span className="absolute -top-2 -right-2 flex h-5 w-5 items-center justify-center rounded-full border border-tm-line bg-white text-zinc-600">
+          <Icon name="monitor" size={10} />
+        </span>
+      )}
+      {p.reaction && (
+        <span key={p.reaction.id} className="tm-rise pointer-events-none absolute inset-x-0 -top-8 text-center text-2xl leading-none">
+          {p.reaction.emoji}
         </span>
       )}
     </span>
@@ -136,8 +167,19 @@ function Tile({ p, profile, small }: { p: Person; profile?: Profile; small?: boo
   const speaking = useSpeaking(p.streams[MIC], !p.state.muted);
   const cam = p.state.camera ? p.streams[CAMERA] : null;
   return (
-    <div className={`relative flex aspect-video shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-slate-800 ring-2 transition ${speaking ? "ring-tm-green" : "ring-transparent"}`}>
+    <div className={`relative flex aspect-video shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-slate-800 ring-2 transition ${speaking ? "ring-tm-green" : p.state.hand ? "ring-amber-400" : "ring-transparent"}`}>
       {cam ? <Video stream={cam} mirror={p.self} /> : <Avatar profile={profile} size={small ? 44 : 80} />}
+      {p.state.hand && (
+        <span className="absolute top-2 left-2 flex items-center gap-1 rounded-lg bg-amber-400 px-2 py-0.5 text-xs font-semibold text-slate-900">
+          <Icon name="hand" size={12} />
+          {!small && "Hand raised"}
+        </span>
+      )}
+      {p.reaction && (
+        <span key={p.reaction.id} className={`tm-rise pointer-events-none absolute inset-x-0 bottom-8 text-center leading-none ${small ? "text-3xl" : "text-5xl"}`}>
+          {p.reaction.emoji}
+        </span>
+      )}
       <span className="absolute bottom-2 left-2 flex max-w-[85%] items-center gap-1 rounded-lg bg-black/55 px-2 py-0.5 text-xs">
         {p.state.muted && <Icon name="micOff" size={12} />}
         <span className="truncate">
@@ -166,7 +208,11 @@ export default function Huddle({ channelId, onLeave }: { channelId: string; onLe
   const { me, profiles, channels, huddleName, huddleNotice } = useChat();
   const [present, setPresent] = useState<Record<string, State>>({});
   const [remotes, setRemotes] = useState<Record<string, MediaStream[]>>({});
-  const [mine, setMine] = useState<State>({ muted: false, sharing: false, camera: false });
+  const [mine, setMine] = useState<State>({ muted: false, sharing: false, camera: false, hand: false });
+  const [reactions, setReactions] = useState<Record<string, Reaction>>({});
+  const [picking, setPicking] = useState(false);
+  const picker = useRef<HTMLDivElement>(null);
+  const selfKey = useRef("");
   const [local, setLocal] = useState<(MediaStream | null)[]>([null, null, null]);
   const [error, setError] = useState("");
   const [expanded, setExpanded] = useState(false);
@@ -186,10 +232,21 @@ export default function Huddle({ channelId, onLeave }: { channelId: string; onLe
   const state = useRef(mine);
   const peers = useRef(new Map<string, Peer>());
   const room = useRef<RealtimeChannel | null>(null);
+  const joinedAt = useRef(0);
+  const attendees = useRef(new Set<string>());
 
   useEffect(() => {
     let closed = false;
     const self = `${me.id}:${tab}${++joins}`;
+    // Everyone publishes when they joined; the earliest join anyone has seen is when the call began
+    const since = Date.now();
+    joinedAt.current = since;
+    let start = since;
+    let joined = false;
+    // Everyone who has been in the call, shared in presence so the last one out knows all of them
+    const attended = new Set([me.id]);
+    attendees.current = attended;
+    selfKey.current = self;
     const conns = peers.current;
     const sending = tracks.current;
     const ch = supabase.channel(`huddle:${channelId}`, { config: { presence: { key: self }, broadcast: { self: false } } });
@@ -258,6 +315,7 @@ export default function Huddle({ channelId, onLeave }: { channelId: string; onLe
     };
 
     let sharers = new Set<string>();
+    let hands = new Set<string>();
     let seen = new Set<string>();
     (async () => {
       try {
@@ -271,13 +329,21 @@ export default function Huddle({ channelId, onLeave }: { channelId: string; onLe
       if (closed) return;
       ch.on("presence", { event: "sync" }, () => {
         const others: Record<string, State> = {};
-        for (const [key, [m]] of Object.entries(ch.presenceState<State>()))
-          if (key !== self) others[key] = { muted: !!m?.muted, sharing: !!m?.sharing, camera: !!m?.camera };
+        const before = attended.size;
+        for (const [key, [m]] of Object.entries(ch.presenceState<State & { since?: number; people?: string[] }>())) {
+          if (typeof m?.since === "number") start = Math.min(start, m.since);
+          attended.add(key.split(":")[0]);
+          if (Array.isArray(m?.people)) for (const id of m.people) if (typeof id === "string") attended.add(id);
+          if (key !== self) others[key] = { muted: !!m?.muted, sharing: !!m?.sharing, camera: !!m?.camera, hand: !!m?.hand };
+        }
+        if (attended.size > before) ch.track({ ...state.current, since, people: [...attended] });
         setPresent(others);
         const keys = Object.keys(others);
         if (keys.some((k) => !seen.has(k))) joinSound();
         else if ([...seen].some((k) => !others[k])) leaveSound();
+        else if (keys.some((k) => others[k].hand && !hands.has(k))) handSound();
         seen = new Set(keys);
+        hands = new Set(keys.filter((k) => others[k].hand));
         // Bring the stage up when someone starts sharing their screen
         const started = Object.keys(others).find((k) => others[k].sharing && !sharers.has(k));
         sharers = new Set(Object.keys(others).filter((k) => others[k].sharing));
@@ -296,13 +362,20 @@ export default function Huddle({ channelId, onLeave }: { channelId: string; onLe
       })
         .on("presence", { event: "leave" }, ({ key }) => drop(key))
         .on("broadcast", { event: "signal" }, ({ payload }) => onSignal(payload as Signal))
+        .on("broadcast", { event: "react" }, ({ payload }) => {
+          if (typeof payload?.from === "string" && REACTIONS.includes(payload.emoji)) flash(setReactions, payload.from, payload.emoji);
+        })
         .subscribe((status) => {
-          if (status === "SUBSCRIBED") ch.track(state.current);
+          if (status !== "SUBSCRIBED") return;
+          joined = true;
+          ch.track({ ...state.current, since, people: [...attended] });
         });
     })();
 
     return () => {
       closed = true;
+      // The last one out logs the call, whether or not anyone picked up
+      if (joined && Object.keys(ch.presenceState()).every((k) => k === self)) logCall(channelId, me.id, (Date.now() - start) / 1000, [...attended]);
       conns.forEach((p) => p.pc.close());
       conns.clear();
       sending.forEach((t) => t?.stop());
@@ -312,8 +385,8 @@ export default function Huddle({ channelId, onLeave }: { channelId: string; onLe
     };
   }, [channelId, me.id]);
 
-  // Calling someone in a DM: ringback until they pick up, for up to 30 seconds
-  const calling = channels[channelId]?.kind === "dm" && Object.keys(present).length === 0 && !unanswered;
+  // Calling the conversation: ringback until someone picks up, for up to 30 seconds
+  const calling = !!channels[channelId] && Object.keys(present).length === 0 && !unanswered;
   useEffect(() => {
     if (!calling) return;
     ringback();
@@ -324,6 +397,16 @@ export default function Huddle({ channelId, onLeave }: { channelId: string; onLe
       clearTimeout(giveUp);
     };
   }, [calling]);
+
+  // The reaction picker closes on any click outside it
+  useEffect(() => {
+    if (!picking) return;
+    const close = (e: PointerEvent) => {
+      if (!picker.current?.contains(e.target as Node)) setPicking(false);
+    };
+    window.addEventListener("pointerdown", close);
+    return () => window.removeEventListener("pointerdown", close);
+  }, [picking]);
 
   const startDrag = (e: React.PointerEvent) => {
     if (e.button !== 0 || !box.current) return;
@@ -360,7 +443,7 @@ export default function Huddle({ channelId, onLeave }: { channelId: string; onLe
   const publish = (patch: Partial<State>) => {
     state.current = { ...state.current, ...patch };
     setMine(state.current);
-    room.current?.track(state.current);
+    room.current?.track({ ...state.current, since: joinedAt.current, people: [...attendees.current] });
   };
 
   const setSlot = (slot: number, stream: MediaStream | null) => {
@@ -369,6 +452,12 @@ export default function Huddle({ channelId, onLeave }: { channelId: string; onLe
     tracks.current[slot] = track;
     peers.current.forEach(({ pc }) => pc.getTransceivers()[slot]?.sender.replaceTrack(track).catch(() => {}));
     setLocal((l) => l.map((s, i) => (i === slot ? stream : s)));
+  };
+
+  const react = (emoji: string) => {
+    setPicking(false);
+    flash(setReactions, "me", emoji);
+    room.current?.send({ type: "broadcast", event: "react", payload: { from: selfKey.current, emoji } });
   };
 
   const toggleMute = () => {
@@ -409,8 +498,8 @@ export default function Huddle({ channelId, onLeave }: { channelId: string; onLe
   };
 
   const people: Person[] = [
-    { key: "me", user: me.id, state: mine, streams: local, self: true },
-    ...Object.entries(present).map(([key, s]) => ({ key, user: key.split(":")[0], state: s, streams: remotes[key] ?? [] })),
+    { key: "me", user: me.id, state: mine, streams: local, self: true, reaction: reactions.me },
+    ...Object.entries(present).map(([key, s]) => ({ key, user: key.split(":")[0], state: s, streams: remotes[key] ?? [], reaction: reactions[key] })),
   ];
   // Other people's screens come before your own
   const screens = people.filter((p) => p.state.sharing && p.streams[SCREEN]).sort((a, b) => Number(!!a.self) - Number(!!b.self));
@@ -430,6 +519,23 @@ export default function Huddle({ channelId, onLeave }: { channelId: string; onLe
       <Btn dark={dark} on={mine.sharing} onClick={share} title={mine.sharing ? "Stop sharing" : "Share screen"}>
         <Icon name={mine.sharing ? "monitorOff" : "monitorUp"} />
       </Btn>
+      <Btn dark={dark} on={mine.hand} onClick={() => publish({ hand: !mine.hand })} title={mine.hand ? "Lower hand" : "Raise hand"}>
+        <Icon name="hand" />
+      </Btn>
+      <div ref={picker} className="relative">
+        <Btn dark={dark} on={picking} onClick={() => setPicking(!picking)} title="React">
+          <Icon name="smile" />
+        </Btn>
+        {picking && (
+          <div className={`tm-pop absolute bottom-full left-1/2 z-10 mb-2 flex -translate-x-1/2 gap-0.5 rounded-xl p-1 ${dark ? "bg-slate-800" : "tm-float bg-white"}`}>
+            {REACTIONS.map((e) => (
+              <button key={e} onClick={() => react(e)} title={`React ${e}`} className={`flex h-9 w-9 items-center justify-center rounded-lg text-xl transition hover:scale-110 active:scale-95 ${dark ? "hover:bg-white/10" : "hover:bg-tm-surface"}`}>
+                {e}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
       <Btn dark={dark} onClick={() => setInviting(true)} title="Add people">
         <Icon name="userPlus" />
       </Btn>
@@ -505,8 +611,8 @@ export default function Huddle({ channelId, onLeave }: { channelId: string; onLe
       ) : (
         <div
           ref={box}
-          className={`tm-pop tm-float fixed z-40 w-80 rounded-2xl bg-white p-3 ${pos ? "" : "bottom-4 left-4"}`}
-          style={pos ? { left: `max(8px, min(${pos.x}px, calc(100vw - 328px)))`, top: `max(8px, min(${pos.y}px, calc(100vh - 160px)))` } : undefined}
+          className={`tm-pop tm-float fixed z-40 w-[26rem] max-w-[calc(100vw-16px)] rounded-2xl bg-white p-3.5 ${pos ? "" : "bottom-4 left-4"}`}
+          style={pos ? { left: `max(8px, min(${pos.x}px, calc(100vw - 424px)))`, top: `max(8px, min(${pos.y}px, calc(100vh - 190px)))` } : undefined}
         >
           <div
             onPointerDown={startDrag}
@@ -522,7 +628,7 @@ export default function Huddle({ channelId, onLeave }: { channelId: string; onLe
             </span>
             <span className="text-xs text-zinc-400">{people.length}</span>
           </div>
-          <div className="my-2.5 flex flex-wrap items-center gap-2">
+          <div className="my-3.5 flex flex-wrap items-center gap-3">
             {people.map((p) => (
               <Face key={p.key} p={p} profile={profiles[p.user]} />
             ))}
@@ -548,9 +654,8 @@ export default function Huddle({ channelId, onLeave }: { channelId: string; onLe
 }
 
 function InvitePeople({ inHuddle, onClose }: { inHuddle: string[]; onClose: () => void }) {
-  const { me, profiles, online, inviteToHuddle } = useChat();
+  const { me, profiles, online, ringing, inviteToHuddle } = useChat();
   const [q, setQ] = useState("");
-  const [rung, setRung] = useState<Set<string>>(new Set());
   const needle = q.trim().toLowerCase();
   const list = Object.values(profiles)
     .filter((p) => p.id !== me.id && !inHuddle.includes(p.id) && `${displayName(p)} ${p.username}`.toLowerCase().includes(needle))
@@ -567,14 +672,11 @@ function InvitePeople({ inHuddle, onClose }: { inHuddle: string[]; onClose: () =
               <div className="truncate text-xs text-zinc-400">@{p.username}</div>
             </div>
             <button
-              disabled={rung.has(p.id)}
-              onClick={() => {
-                inviteToHuddle([p.id]);
-                setRung(new Set(rung).add(p.id));
-              }}
+              disabled={ringing.has(p.id)}
+              onClick={() => inviteToHuddle([p.id])}
               className="rounded-xl bg-tm-green px-3 py-1 text-sm font-semibold text-white transition hover:brightness-95 disabled:bg-zinc-200 disabled:text-zinc-500"
             >
-              {rung.has(p.id) ? "Ringing…" : "Invite"}
+              {ringing.has(p.id) ? "Ringing…" : "Invite"}
             </button>
           </div>
         ))}
@@ -609,9 +711,16 @@ export function IncomingHuddle() {
     };
   }, [ring, silent, dismissRing, flashText]);
 
+  // Once the call has been seen running, it emptying means the caller left: stop ringing at once.
+  // Before that, give presence a moment to catch up with the ring.
+  const seenLive = useRef<Ring | null>(null);
   useEffect(() => {
-    if (!ring || live) return;
-    const t = setTimeout(() => dismissRing(), 5000);
+    if (!ring) return;
+    if (live) {
+      seenLive.current = ring;
+      return;
+    }
+    const t = setTimeout(() => dismissRing(), seenLive.current === ring ? 0 : 5000);
     return () => clearTimeout(t);
   }, [ring, live, dismissRing]);
 
