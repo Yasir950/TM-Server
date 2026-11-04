@@ -14,12 +14,13 @@ import SuperAdminView from "./SuperAdmin";
 import { CompanyLogo, CompanySwitcher, CompanyView, InviteFromUrl, MemberCard, MembersView, Onboarding, ProfileModal } from "./Company";
 import Huddle, { IncomingHuddle } from "./Huddle";
 import { MeetingsView, useNow } from "./Meetings";
+import { MyTasksView, ProjectsView, SidebarProjects, TaskDialog } from "./Projects";
 import { Icon, type IconName } from "../icons";
 import { APP_NAME, CALL, DESKTOP_MAC_URL, DESKTOP_WIN_URL, RAIL } from "@/lib/brand";
 import { enablePush, signOut } from "@/lib/push";
 
 export default function Chat() {
-  const { activeId, thread, view, huddle, setHuddle, company, superAdmin, memberCard, members, channels, channelDetails, showChannelDetails } = useChat();
+  const { activeId, thread, view, huddle, setHuddle, company, superAdmin, memberCard, members, channels, channelDetails, showChannelDetails, taskId } = useChat();
   const [switcher, setSwitcher] = useState(false);
   const [tab, setTab] = useState<Tab>("home");
 
@@ -75,12 +76,13 @@ export default function Chat() {
               pane ? "hidden lg:flex" : open ? "flex" : "hidden md:flex"
             }`}
           >
-            {view === "threads" ? <ThreadsView /> : view === "saved" ? <SavedView /> : view === "search" ? <SearchView /> : view === "reminders" ? <RemindersView /> : view === "meetings" ? <MeetingsView /> : view === "admin" ? <AdminView /> : view === "platform" ? <SuperAdminView /> : view === "members" ? <MembersView /> : view === "company" ? <CompanyView key={company.id} /> : activeId ? <ChannelView key={activeId} channelId={activeId} /> : <Empty />}
+            {view === "threads" ? <ThreadsView /> : view === "saved" ? <SavedView /> : view === "search" ? <SearchView /> : view === "reminders" ? <RemindersView /> : view === "meetings" ? <MeetingsView /> : view === "projects" ? <ProjectsView /> : view === "tasks" ? <MyTasksView /> : view === "admin" ? <AdminView /> : view === "platform" ? <SuperAdminView /> : view === "members" ? <MembersView /> : view === "company" ? <CompanyView key={company.id} /> : activeId ? <ChannelView key={activeId} channelId={activeId} /> : <Empty />}
           </main>
           {pane}
         </div>
       </div>
       {switcher && <QuickSwitcher onClose={() => setSwitcher(false)} />}
+      {taskId && <TaskDialog key={taskId} />}
       {huddle && <Huddle key={huddle} channelId={huddle} onLeave={() => setHuddle(null)} />}
       <IncomingHuddle />
       <InviteFromUrl />
@@ -282,7 +284,13 @@ const railRing = { boxShadow: `0 0 0 2px ${RAIL}` };
 
 // Slack-style app rail: switches what the sidebar lists
 function Rail({ tab, onTab, className }: { tab: Tab; onTab: (t: Tab) => void; className: string }) {
-  const { company, channels, memberships, unread, threadUnread } = useChat();
+  const { me, company, channels, memberships, unread, threadUnread, view, setView, notifications } = useChat();
+  // Views opened from the rail; while one shows, the tab buttons aren't highlighted
+  const railView = view === "tasks" || view === "saved" || view === "reminders" || view === "admin";
+  const tabTo = (t: Tab) => {
+    onTab(t);
+    if (railView) setView(null);
+  };
   let dmUnread = 0;
   let homeUnread = false;
   let mentions = 0;
@@ -295,6 +303,7 @@ function Rail({ tab, onTab, className }: { tab: Tab; onTab: (t: Tab) => void; cl
     }
   }
   mentions += Object.values(threadUnread).reduce((n, t) => n + (memberships[t.channelId]?.muted ? 0 : t.mentions), 0);
+  mentions += notifications.filter((n) => !n.read_at).length;
 
   return (
     // Bottom tab bar on phones, left rail from md up
@@ -302,12 +311,16 @@ function Rail({ tab, onTab, className }: { tab: Tab; onTab: (t: Tab) => void; cl
       className={`${className} shrink-0 justify-around border-t border-white/10 pt-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))] md:w-12 md:flex-col md:items-center md:justify-start md:gap-2 md:border-0 md:pt-3 md:pb-0`}
       style={{ background: RAIL }}
     >
-      <button onClick={() => onTab("home")} title={company?.name} className="mb-2 hidden rounded-[30%] md:block ring-2 ring-white/20 transition hover:ring-white/50">
+      <button onClick={() => tabTo("home")} title={company?.name} className="mb-2 hidden rounded-[30%] md:block ring-2 ring-white/20 transition hover:ring-white/50">
         <CompanyLogo company={company} size={30} />
       </button>
-      <RailButton active={tab === "home"} onClick={() => onTab("home")} icon="home" label="Home" dot={homeUnread} />
-      <RailButton active={tab === "dms"} onClick={() => onTab("dms")} icon="dms" label="DMs" count={dmUnread} />
-      <RailButton active={tab === "activity"} onClick={() => onTab("activity")} icon="bell" label="Activity" count={mentions} />
+      <RailButton active={!railView && tab === "home"} onClick={() => tabTo("home")} icon="home" label="Home" dot={homeUnread} />
+      <RailButton active={!railView && tab === "dms"} onClick={() => tabTo("dms")} icon="dms" label="DMs" count={dmUnread} />
+      <RailButton active={!railView && tab === "activity"} onClick={() => tabTo("activity")} icon="bell" label="Activity" count={mentions} />
+      <RailButton active={view === "tasks"} onClick={() => setView("tasks")} icon="checkSquare" label="Tasks" />
+      <RailButton active={view === "saved"} onClick={() => setView("saved")} icon="bookmark" label="Saved" />
+      <RailButton active={view === "reminders"} onClick={() => setView("reminders")} icon="clock" label="Reminders" />
+      {isAdmin(me) && <RailButton active={view === "admin"} onClick={() => setView("admin")} icon="wrench" label="Admin" />}
     </nav>
   );
 }
@@ -391,9 +404,9 @@ function DmList({ onNew }: { onNew: () => void }) {
   );
 }
 
-// Mentions of me (direct, @channel, @here) across conversations I'm in
+// Mentions of me (direct, @channel, @here) across conversations I'm in, plus task assignments
 function ActivityList() {
-  const { me, profiles, channels, memberships, channelTitle, unread, threadUnread, setActive, setThread } = useChat();
+  const { me, profiles, channels, memberships, channelTitle, unread, threadUnread, setActive, setThread, notifications, markNotificationsRead, openTask } = useChat();
   const [items, setItems] = useState<Message[] | null>(null);
   // Refetch when a new mention arrives
   const mentionKey = Object.values(unread).reduce((n, u) => n + u.mentions, 0) + Object.values(threadUnread).reduce((n, t) => n + t.mentions, 0);
@@ -415,14 +428,59 @@ function ActivityList() {
     setActive(m.channel_id, m.parent_id && !m.also_in_channel ? null : m.id);
     if (m.parent_id) setThread({ id: m.parent_id, channelId: m.channel_id });
   };
+  // Mentions and notifications in one timeline, newest first
+  const feed = shown
+    ? [...shown.map((m) => ({ at: m.created_at, m, n: null })), ...notifications.map((n) => ({ at: n.created_at, m: null, n }))].sort((a, b) => b.at.localeCompare(a.at))
+    : null;
+  const unreadCount = notifications.filter((n) => !n.read_at).length;
+  const ago = (iso: string) => (dayLabel(iso) === "Today" ? timeOf(iso) : dayLabel(iso));
 
   return (
     <>
-      <PanelHeader title="Activity" />
-      {!shown && <RowSkeleton />}
-      {shown?.length === 0 && <p className="px-2.5 text-sm text-zinc-400">No mentions yet. When someone @mentions you, it shows up here.</p>}
+      <PanelHeader
+        title="Activity"
+        action={
+          unreadCount > 0 && (
+            <button onClick={() => markNotificationsRead()} className="rounded-lg px-2 py-1 text-xs font-medium text-tm-blue transition hover:bg-white">
+              Mark all read
+            </button>
+          )
+        }
+      />
+      {!feed && <RowSkeleton />}
+      {feed?.length === 0 && <p className="px-2.5 text-sm text-zinc-400">Nothing yet. Mentions and tasks assigned to you show up here.</p>}
       <div className="space-y-1">
-        {shown?.map((m) => {
+        {feed?.map(({ m, n }) => {
+          if (n) {
+            const isNew = !n.read_at;
+            return (
+              <button
+                key={n.id}
+                onClick={() => {
+                  markNotificationsRead([n.id]);
+                  if (n.task_id) openTask(n.task_id);
+                }}
+                className={`tm-fade-up flex w-full gap-2.5 rounded-xl px-2.5 py-2 text-left transition hover:bg-white ${isNew ? "bg-tm-blue-light/60" : ""}`}
+              >
+                <span className="relative">
+                  <Avatar profile={n.actor_id ? profiles[n.actor_id] : undefined} size={32} />
+                  <span className="absolute -right-1 -bottom-1 flex h-4 w-4 items-center justify-center rounded-md bg-tm-blue text-white ring-2 ring-white">
+                    <Icon name="checkSquare" size={10} />
+                  </span>
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="flex items-baseline gap-2 text-xs text-zinc-400">
+                    <span className="flex-1 truncate">Task assigned to you</span>
+                    <span className="shrink-0">{ago(n.created_at)}</span>
+                  </span>
+                  <span className={`block truncate text-sm text-zinc-800 ${isNew ? "font-bold" : "font-semibold"}`}>{n.title}</span>
+                  <span className="line-clamp-2 text-[13px] text-zinc-600">{n.body}</span>
+                </span>
+                {isNew && <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-tm-blue" aria-label="Unread" />}
+              </button>
+            );
+          }
+          if (!m) return null;
           const ch = channels[m.channel_id];
           return (
             <button key={m.id} onClick={() => open(m)} className="tm-fade-up flex w-full gap-2.5 rounded-xl px-2.5 py-2 text-left transition hover:bg-white">
@@ -504,8 +562,6 @@ function Sidebar({ tab, className }: { tab: Tab; className: string }) {
               label="Threads"
               badge={newThreads.length ? <Badge count={threadMentions || newThreads.length} strong={threadMentions > 0} /> : undefined}
             />
-            <NavButton active={view === "saved"} onClick={() => setView("saved")} icon="bookmark" label="Saved" />
-            <NavButton active={view === "reminders"} onClick={() => setView("reminders")} icon="clock" label="Reminders" />
             <NavButton
               active={view === "meetings"}
               onClick={() => setView("meetings")}
@@ -514,7 +570,6 @@ function Sidebar({ tab, className }: { tab: Tab; className: string }) {
               badge={liveMeetings ? <span className="rounded-full bg-tm-green px-1.5 py-px text-[11px] font-bold text-white">Live</span> : undefined}
             />
             <NavButton active={view === "members"} onClick={() => setView("members")} icon="users" label="Members" />
-            {isAdmin(me) && <NavButton active={view === "admin"} onClick={() => setView("admin")} icon="wrench" label="Admin" />}
             {superAdmin && <NavButton active={view === "platform"} onClick={() => setView("platform")} icon="shield" label="Super admin" />}
           </div>
           {notifPerm === "default" && (
@@ -532,6 +587,7 @@ function Sidebar({ tab, className }: { tab: Tab; className: string }) {
             </button>
           )}
           {starred.length > 0 && <Section title="Starred">{starred.map(renderItem)}</Section>}
+          <SidebarProjects renderSection={(children, onAdd) => <Section title="Projects" onAdd={onAdd}>{children}</Section>} />
           <Section title="Channels" onAdd={() => setModal("create")}>
             {rooms.map(renderItem)}
             <button onClick={() => setModal("browse")} className="w-full rounded-lg px-2.5 py-1.5 text-left text-sm text-zinc-500 transition hover:bg-white">

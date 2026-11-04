@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useCallback, useEffect, useState } from "react";
-import { supabase, type Profile, type Role } from "@/lib/supabase";
+import { supabase, fmtBytes, type PlanId, type Profile, type Role } from "@/lib/supabase";
 import { Avatar, RowSkeleton, Skeleton, Tabs, btn, btnGhost, input } from "../ui";
 import { useChat } from "./store";
 import { ViewShell } from "./Views";
@@ -34,6 +34,22 @@ type CompanyRow = {
   messages: number;
   messages_7d: number;
   last_activity: string | null;
+  plan: PlanId;
+  upgrade_requested_at: string | null;
+  storage_bytes: number;
+};
+// public.contact_requests: the website's contact form and in-app upgrade requests
+type Request = {
+  id: string;
+  kind: "sales" | "upgrade" | "general";
+  name: string;
+  email: string;
+  company: string;
+  team_size: string;
+  message: string;
+  company_id: string | null;
+  handled_at: string | null;
+  created_at: string;
 };
 type ChannelRow = { id: string; name: string | null; kind: "public" | "private" | "dm"; archived: boolean; members: number; messages: number; last_activity: string | null; people: string | null };
 type UserRow = {
@@ -52,7 +68,7 @@ const fmtDate = (d: string | null) => (d ? new Date(d).toLocaleDateString(undefi
 const num = (n: number | undefined) => (n ?? 0).toLocaleString();
 
 export default function SuperAdminView() {
-  const [tab, setTab] = useState<"companies" | "users">("companies");
+  const [tab, setTab] = useState<"companies" | "users" | "requests">("companies");
   const [stats, setStats] = useState<Stats | null>(null);
   const [notice, setNotice] = useState("");
   const [now] = useState(() => Date.now());
@@ -110,9 +126,9 @@ export default function SuperAdminView() {
       </section>
 
       <div className="pt-2">
-        <Tabs tabs={[["companies", "Companies"], ["users", "Users"]]} value={tab} onChange={setTab} />
+        <Tabs tabs={[["companies", "Companies"], ["users", "Users"], ["requests", "Requests"]]} value={tab} onChange={setTab} />
       </div>
-      {tab === "companies" ? <Companies notify={setNotice} /> : <Users notify={setNotice} />}
+      {tab === "companies" ? <Companies notify={setNotice} /> : tab === "users" ? <Users notify={setNotice} /> : <Requests notify={setNotice} />}
     </ViewShell>
   );
 }
@@ -153,7 +169,15 @@ function Companies({ notify }: { notify: (s: string) => void }) {
     await Promise.all([load(), reload()]);
   };
 
-  const shown = rows?.filter((c) => `${c.name} ${c.handle} ${c.owner_name ?? ""} ${c.owner_email ?? ""}`.toLowerCase().includes(q.toLowerCase()));
+  const setPlan = async (c: CompanyRow, plan: PlanId) => {
+    if (!confirm(`Move ${c.name} from ${c.plan} to ${plan}?`)) return;
+    const { error } = await supabase.rpc("set_company_plan", { p_company: c.id, p_plan: plan });
+    notify(error ? error.message : `${c.name} is now on ${plan}`);
+    if (error) return;
+    await Promise.all([load(), reload()]);
+  };
+
+  const shown = rows?.filter((c) => `${c.name} ${c.handle} ${c.owner_name ?? ""} ${c.owner_email ?? ""} ${c.plan}`.toLowerCase().includes(q.toLowerCase()));
 
   return (
     <div className="space-y-3">
@@ -176,6 +200,11 @@ function Companies({ notify }: { notify: (s: string) => void }) {
                   <span className="flex items-center gap-2">
                     <span className="truncate font-semibold text-zinc-900">{c.name}</span>
                     {c.id === company?.id && <span className="shrink-0 rounded-md bg-tm-blue-light px-1.5 py-0.5 text-[10px] font-medium text-tm-blue-dark">Viewing</span>}
+                    {c.upgrade_requested_at && (
+                      <span className="shrink-0 rounded-md bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800" title={`Requested ${fmtDate(c.upgrade_requested_at)}`}>
+                        Upgrade requested
+                      </span>
+                    )}
                   </span>
                   <span className="block truncate text-xs text-zinc-500">
                     @{c.handle} · owner {c.owner_name ?? "–"}
@@ -188,8 +217,19 @@ function Companies({ notify }: { notify: (s: string) => void }) {
                 <span title="Channels">{num(c.channels)} channels</span>
                 <span title={`${num(c.messages)} messages all time`}>{num(c.messages_7d)} msgs · 7d</span>
                 <span className="hidden md:inline" title="Last message">last {fmtDate(c.last_activity)}</span>
+                <span title="File storage">{fmtBytes(c.storage_bytes)}</span>
               </span>
               <span className="flex gap-2">
+                <select
+                  className="rounded-lg border border-tm-line bg-white px-2 py-1 text-sm font-medium"
+                  value={c.plan}
+                  onChange={(e) => setPlan(c, e.target.value as PlanId)}
+                  title="Plan"
+                >
+                  <option value="free">Free</option>
+                  <option value="pro">Pro</option>
+                  <option value="enterprise">Enterprise</option>
+                </select>
                 <button className={btn} onClick={() => enter(c.id)}>Open</button>
                 <button className={`${btnGhost} text-red-600`} onClick={() => remove(c)} title="Delete company">
                   <Icon name="trash" size={16} />
@@ -223,6 +263,70 @@ function Companies({ notify }: { notify: (s: string) => void }) {
           </li>
         ))}
         {shown?.length === 0 && <li className="p-6 text-center text-sm text-zinc-400">No companies match</li>}
+      </ul>
+    </div>
+  );
+}
+
+const KIND_LABEL = { sales: "Enterprise", upgrade: "Upgrade", general: "Question" } as const;
+
+function Requests({ notify }: { notify: (s: string) => void }) {
+  const [rows, setRows] = useState<Request[] | null>(null);
+  const [showHandled, setShowHandled] = useState(false);
+
+  const load = useCallback(
+    () =>
+      supabase
+        .from("contact_requests")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .limit(200)
+        .then(({ data, error }) => (error ? notify(error.message) : setRows(data ?? []))),
+    [notify],
+  );
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const toggle = async (r: Request) => {
+    const { error } = await supabase.from("contact_requests").update({ handled_at: r.handled_at ? null : new Date().toISOString() }).eq("id", r.id);
+    if (error) notify(error.message);
+    else load();
+  };
+
+  const shown = rows?.filter((r) => showHandled || !r.handled_at);
+
+  return (
+    <div className="space-y-3">
+      <label className="flex items-center gap-2 text-sm text-zinc-600">
+        <input type="checkbox" checked={showHandled} onChange={(e) => setShowHandled(e.target.checked)} />
+        Show handled
+      </label>
+      {!shown && <RowSkeleton />}
+      <ul className="divide-y divide-tm-line rounded-2xl border border-tm-line bg-white">
+        {shown?.map((r) => (
+          <li key={r.id} className={`p-4 ${r.handled_at ? "opacity-60" : ""}`}>
+            <div className="flex flex-wrap items-center gap-2">
+              <span
+                className={`rounded-md px-1.5 py-0.5 text-[10px] font-semibold ${r.kind === "general" ? "bg-zinc-100 text-zinc-600" : r.kind === "upgrade" ? "bg-tm-green-light text-tm-green" : "bg-tm-blue-light text-tm-blue-dark"}`}
+              >
+                {KIND_LABEL[r.kind]}
+              </span>
+              <span className="font-semibold">{r.name}</span>
+              <a href={`mailto:${r.email}`} className="text-sm text-tm-blue hover:underline">
+                {r.email}
+              </a>
+              {r.company && <span className="text-sm text-zinc-500">· {r.company}</span>}
+              {r.team_size && <span className="text-sm text-zinc-500">· {r.team_size} people</span>}
+              <span className="ml-auto text-xs text-zinc-400">{fmtDate(r.created_at)}</span>
+              <button className={btnGhost} onClick={() => toggle(r)}>
+                {r.handled_at ? "Reopen" : "Mark handled"}
+              </button>
+            </div>
+            {r.message && <p className="mt-2 text-sm whitespace-pre-wrap text-zinc-700">{r.message}</p>}
+          </li>
+        ))}
+        {shown?.length === 0 && <li className="p-6 text-center text-sm text-zinc-400">No open requests</li>}
       </ul>
     </div>
   );

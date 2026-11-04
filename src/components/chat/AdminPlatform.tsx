@@ -5,6 +5,7 @@ import { supabase, displayName, type Workflow } from "@/lib/supabase";
 import { timeOf, dayLabel } from "@/lib/format";
 import { btn, btnGhost, input } from "../ui";
 import { useChat } from "./store";
+import { Locked } from "./Plan";
 
 type DlpRule = { id: string; name: string; pattern: string; action: "block" | "redact"; enabled: boolean };
 type Sub = { id: string; url: string; events: string[]; secret: string; enabled: boolean };
@@ -23,15 +24,21 @@ const Card = ({ title, hint, children }: { title: string; hint?: string; childre
 );
 
 // Phase 3 admin cards: Workflow Builder, DLP, Events API, audit log
+// DLP, Events API and the audit log need a plan that includes them (Admin > Plan)
 export default function AdminPlatform({ notify }: { notify: (s: string) => void }) {
+  const { plan } = useChat();
   return (
     <>
       <Workflows notify={notify} />
       <div className="grid gap-2 lg:grid-cols-2">
-        <Dlp notify={notify} />
-        <Events notify={notify} />
+        {plan?.dlp ? <Dlp notify={notify} /> : <Locked title="Data loss prevention">Block or redact sensitive content like card numbers before it&apos;s posted.</Locked>}
+        {plan?.events_api ? (
+          <Events notify={notify} />
+        ) : (
+          <Locked title="Events API">Send signed callbacks to your own systems when messages are posted, channels are created or people join.</Locked>
+        )}
       </div>
-      <AuditLog />
+      {plan?.audit_log ? <AuditLog /> : <Locked title="Audit log">See who changed channels, members, roles, settings and integrations, and export the record.</Locked>}
     </>
   );
 }

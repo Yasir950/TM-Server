@@ -6,6 +6,7 @@ import { Avatar, Skeleton, btn, btnGhost, input } from "../ui";
 import { useChat } from "./store";
 import { ViewShell } from "./Views";
 import AdminPlatform from "./AdminPlatform";
+import PlanCard, { Locked } from "./Plan";
 
 type Stats = {
   members: number;
@@ -24,19 +25,14 @@ const Card = ({ title, children }: { title: string; children: React.ReactNode })
 );
 
 export default function AdminView() {
-  const { me, profiles } = useChat();
+  const { me, profiles, company, plan, reload } = useChat();
   const [stats, setStats] = useState<Stats | null>(null);
-  const [retention, setRetention] = useState("");
+  const [retention, setRetention] = useState(company?.retention_days?.toString() ?? "");
   const [notice, setNotice] = useState("");
   const [now] = useState(() => Date.now());
 
   useEffect(() => {
     supabase.rpc("admin_stats").then(({ data }) => setStats(data as Stats));
-    supabase
-      .from("workspace_settings")
-      .select("retention_days")
-      .single()
-      .then(({ data }) => setRetention(data?.retention_days?.toString() ?? ""));
   }, []);
 
   // Last 14 days, including days with no messages
@@ -53,8 +49,10 @@ export default function AdminView() {
 
   const saveRetention = async () => {
     const days = retention.trim() ? Math.max(1, Math.floor(Number(retention))) : null;
-    const { error } = await supabase.from("workspace_settings").update({ retention_days: days, updated_at: new Date().toISOString() }).eq("id", true);
+    if (!company) return;
+    const { error } = await supabase.from("companies").update({ retention_days: days }).eq("id", company.id);
     setNotice(error ? error.message : days ? `Messages older than ${days} days will be deleted daily (pinned messages are kept)` : "Messages are kept forever");
+    if (!error) reload();
   };
 
   const runRetention = async () => {
@@ -63,8 +61,9 @@ export default function AdminView() {
   };
 
   return (
-    <ViewShell icon="wrench" title="Admin" subtitle="Analytics, members, retention, workflows, DLP, events and audit log">
+    <ViewShell icon="wrench" title="Admin" subtitle="Plan, analytics, members, retention, workflows, DLP, events and audit log">
       {notice && <div className="tm-fade rounded-xl bg-tm-blue-light px-4 py-2 text-sm text-tm-blue-dark">{notice}</div>}
+      <PlanCard notify={setNotice} />
       <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
         {(
           [
@@ -132,6 +131,12 @@ export default function AdminView() {
         </ul>
       </Card>
 
+      {!plan?.custom_retention ? (
+        <Locked title="Message retention">
+          Choose how long messages are kept. On the {plan?.name ?? "Free"} plan, messages older than {plan?.history_days ?? 90} days are hidden
+          {plan?.purge_days ? ` and deleted after ${plan.purge_days} days` : ""}.
+        </Locked>
+      ) : (
       <Card title="Message retention">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-sm">Delete messages older than</span>
@@ -146,6 +151,7 @@ export default function AdminView() {
         </div>
         <p className="mt-2 text-xs text-zinc-400">Leave empty to keep messages forever. Pinned messages are never deleted. Runs daily when pg_cron is enabled.</p>
       </Card>
+      )}
 
       <AdminPlatform notify={setNotice} />
     </ViewShell>

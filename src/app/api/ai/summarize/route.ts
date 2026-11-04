@@ -16,6 +16,10 @@ export async function POST(req: NextRequest) {
     auth: { persistSession: false },
     global: { headers: { Authorization: `Bearer ${token}` } },
   });
+  // AI summaries are a paid-plan feature of the conversation's company
+  const { data: allowed } = await supabase.rpc("channel_has_feature", { p_channel: channelId, p_feature: "ai_summaries" });
+  if (!allowed) return Response.json({ error: "AI summaries are available on the Pro plan. Ask an admin to upgrade." }, { status: 402 });
+
   let q = supabase
     .from("messages")
     .select("body, created_at, bot_name, user_id")

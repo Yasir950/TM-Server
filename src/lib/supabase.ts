@@ -50,7 +50,36 @@ export type Company = {
   allow_join_requests: boolean;
   members_can_invite: boolean;
   created_at: string;
+  plan: PlanId;
+  plan_changed_at: string | null;
+  upgrade_requested_at: string | null;
+  retention_days: number | null;
 };
+
+// A row of public.plans (supabase/migrations/*_plans.sql): null limits are unlimited
+export type PlanId = "free" | "pro" | "enterprise";
+export type Plan = {
+  id: PlanId;
+  name: string;
+  price_cents: number | null;
+  max_members: number | null;
+  storage_bytes: number | null;
+  max_file_bytes: number | null;
+  history_days: number | null;
+  purge_days: number | null;
+  max_call_participants: number | null;
+  max_webhooks: number | null;
+  max_workflows: number | null;
+  guests: boolean;
+  ai_summaries: boolean;
+  events_api: boolean;
+  dlp: boolean;
+  audit_log: boolean;
+  custom_retention: boolean;
+};
+
+export const fmtBytes = (n: number) =>
+  n >= 1024 ** 3 ? `${+(n / 1024 ** 3).toFixed(1)} GB` : n >= 1024 ** 2 ? `${Math.round(n / 1024 ** 2)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`;
 
 // A row of company_directory(): fields the viewer may not see come back null or empty
 export type Member = {
@@ -99,6 +128,64 @@ export type Meeting = {
 
 export const meetingEnd = (m: Meeting) => Date.parse(m.starts_at) + m.duration_minutes * 60_000;
 export const meetingLive = (m: Meeting, now = Date.now()) => !m.cancelled_at && Date.parse(m.starts_at) <= now && now < meetingEnd(m);
+
+// Projects and tasks (supabase/migrations/*_projects_tasks.sql)
+export type ProjectMember = { project_id: string; user_id: string; role: "admin" | "member"; added_at: string };
+
+export type Project = {
+  id: string;
+  company_id: string;
+  key: string;
+  name: string;
+  description: string;
+  lead_id: string | null;
+  created_by: string | null;
+  archived: boolean;
+  next_number: number;
+  created_at: string;
+  project_members: ProjectMember[];
+};
+
+export type TaskStatus = "todo" | "in_progress" | "in_review" | "done";
+export type TaskPriority = "lowest" | "low" | "medium" | "high" | "highest";
+export type TaskType = "task" | "bug" | "story" | "epic";
+
+export type Task = {
+  id: string;
+  project_id: string;
+  number: number;
+  title: string;
+  description: string;
+  type: TaskType;
+  status: TaskStatus;
+  priority: TaskPriority;
+  assignee_id: string | null;
+  reporter_id: string | null;
+  due_date: string | null;
+  labels: string[];
+  estimate: number | null;
+  position: number;
+  completed_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type TaskComment = { id: string; task_id: string; user_id: string; body: string; edited_at: string | null; created_at: string };
+export type TaskActivity = { id: number; task_id: string; user_id: string | null; field: string; old_value: string | null; new_value: string | null; created_at: string };
+
+// A row of public.notifications (supabase/migrations/*_task_notifications.sql)
+export type AppNotification = {
+  id: string;
+  user_id: string;
+  company_id: string | null;
+  kind: "task_assigned";
+  actor_id: string | null;
+  task_id: string | null;
+  title: string;
+  body: string;
+  read_at: string | null;
+  created_at: string;
+};
 
 export const activeStatus = (p?: Profile) =>
   p && (p.status_emoji || p.status_text) && (!p.status_expires_at || p.status_expires_at > new Date().toISOString())

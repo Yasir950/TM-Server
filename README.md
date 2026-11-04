@@ -37,3 +37,25 @@ staying in the tray (closing its window hides it; it opens at login and pops up 
 
 The URL must be reachable from Supabase, so push doesn't work against `localhost`; use the deployed app or a tunnel.
 Each person enables it once with the "Enable notifications" button in the sidebar.
+
+## Plans (Free, Pro, Enterprise)
+
+Every company has a plan; the limits live in the `plans` table and are enforced by the database
+(`supabase/migrations/20261104010000_plans.sql`, which also explains how they were sized from Supabase's quotas).
+
+| | Free | Pro ($100 / company / month) | Enterprise |
+|---|---|---|---|
+| Members | 10 | 250 | unlimited |
+| Message history | 90 days (deleted after 1 year) | unlimited | unlimited |
+| File storage / largest file | 1 GB / 10 MB | 25 GB / 250 MB | unlimited / 250 MB |
+| Meet | 1:1 | up to 10 people | up to 10 people |
+| Webhooks / workflows | 2 / 2 | unlimited | unlimited |
+| Guests, AI summaries, Events API, DLP, audit log, custom retention | – | yes | yes |
+
+1. Run the migration. Companies that already exist are moved to Pro so nothing they use disappears; new companies start on Free.
+2. Raise the project's upload limit to 250 MB (Dashboard → Storage → Settings) so Pro's file size works.
+3. Payments aren't automated yet: an admin requests an upgrade from Admin → Plan, the request is emailed and listed under
+   Super admin → Requests, and a super admin switches the plan in Super admin → Companies.
+4. For the email, set `RESEND_API_KEY` (and optionally `CONTACT_EMAIL`, `CONTACT_FROM`); see `.env.example`.
+
+The public pricing page reads its numbers from `src/lib/plans.ts`; keep them in step with the `plans` table.

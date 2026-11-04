@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { EditorContent, type Editor } from "@tiptap/react";
-import { supabase, displayName, type Attachment, type Message, type Profile } from "@/lib/supabase";
+import { supabase, displayName, fmtBytes, type Attachment, type Message, type Profile } from "@/lib/supabase";
 import { clock, fileSize, toMrkdwn } from "@/lib/format";
 import { Avatar, EmojiPopover } from "../ui";
 import { Icon, type IconName } from "../icons";
@@ -28,7 +28,7 @@ const GROUP_MENTIONS = [{ username: "channel", hint: "Notify everyone in this ch
 export default function Composer({ channelId, parentId, placeholder, onSent, onTyping, alsoSendLabel }: Props) {
   const [alsoSend, setAlsoSend] = useState(false);
   const [emoji, setEmoji] = useState(false);
-  const { me, profiles, channels, reload, setView } = useChat();
+  const { me, profiles, channels, reload, setView, plan } = useChat();
   const [notice, setNotice] = useState("");
   const draftKey = `tm:draft:${channelId}:${parentId ?? ""}`;
   // Composer is remounted per conversation (parents are keyed), so the draft loads once
@@ -109,9 +109,16 @@ export default function Composer({ channelId, parentId, placeholder, onSent, onT
         if (r?.body) body = r.body;
       }
       const attachments: Attachment[] = [];
+      // Per-file limit comes from the company's plan; the bucket only knows the largest plan's limit
+      const tooBig = plan?.max_file_bytes ? files.find((f) => f.size > plan.max_file_bytes!) : undefined;
+      if (tooBig && plan?.max_file_bytes)
+        throw new Error(`${tooBig.name} is ${fmtBytes(tooBig.size)}. Files on the ${plan.name} plan can be up to ${fmtBytes(plan.max_file_bytes)}.`);
       for (const f of files) {
         const path = `${channelId}/${crypto.randomUUID()}/${f.name}`;
         const { error } = await supabase.storage.from("attachments").upload(path, f, { contentType: f.type });
+        // The storage policy refuses uploads once the company's quota is used up
+        if (error && /row-level security|policy/i.test(error.message))
+          throw new Error(`Your company has used all of its file storage${plan ? ` on the ${plan.name} plan` : ""}. An admin can free up space or upgrade.`);
         if (error) throw error;
         attachments.push({ name: f.name, path, size: f.size, type: f.type || "application/octet-stream", ...clipMeta.get(f) });
       }

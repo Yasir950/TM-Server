@@ -2,7 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
-import { supabase, displayName, inDnd, meetingEnd, meetingLive, mentionsMe, type Channel, type Company, type Meeting, type Member, type Membership, type Message, type Profile } from "@/lib/supabase";
+import { supabase, displayName, inDnd, meetingEnd, meetingLive, mentionsMe, type Channel, type Company, type Meeting, type Member, type Membership, type Message, type Plan, type Profile, type Project, type AppNotification } from "@/lib/supabase";
 import { APP_NAME, call } from "@/lib/brand";
 import { plainText, timeOf } from "@/lib/format";
 import { enablePush, focusApp } from "@/lib/push";
@@ -12,7 +12,7 @@ type Unread = Record<string, { unread: number; mentions: number }>;
 // Keyed by thread parent id; only threads the user follows (started, replied to, or mentioned in)
 type ThreadUnread = Record<string, { channelId: string; unread: number; mentions: number }>;
 type Preview = { body: string; user_id: string; created_at: string };
-export type View = "threads" | "saved" | "search" | "reminders" | "meetings" | "admin" | "members" | "company" | "platform" | null;
+export type View = "threads" | "saved" | "search" | "reminders" | "meetings" | "projects" | "tasks" | "admin" | "members" | "company" | "platform" | null;
 export type Thread = { id: string; channelId: string };
 // meeting: set when the ring is a scheduled meeting starting, rather than someone calling
 export type Ring = { channelId: string; from: string; title: string; meeting?: string };
@@ -24,6 +24,8 @@ type ChatState = {
   profiles: Record<string, Profile>;
   // Null until the user creates or joins a company
   company: Company | null;
+  // The current company's plan and its limits (null until there is a company)
+  plan: Plan | null;
   companies: Company[];
   members: Record<string, Member>;
   // Platform operator: sees every company and is owner of each (supabase/migrations/*_super_admin.sql)
@@ -65,6 +67,18 @@ type ChatState = {
   // Meetings in the current company from the last week on, that the user is invited to or can see
   meetings: Meeting[];
   reloadMeetings: () => Promise<void>;
+  // Projects in the current company the user can see (they're in it, or they're a company admin)
+  projects: Project[];
+  reloadProjects: () => Promise<void>;
+  // Project whose board the "projects" view shows; null shows the list of projects
+  projectId: string | null;
+  openProject: (id: string | null) => void;
+  // Task open in the task dialog, over whatever view is showing
+  taskId: string | null;
+  openTask: (id: string | null) => void;
+  // Saved notifications (task assignments) in the current company, newest first
+  notifications: AppNotification[];
+  markNotificationsRead: (ids?: string[]) => void;
   setActive: (id: string | null, focusId?: string | null) => void;
   setThread: (t: Thread | null) => void;
   setView: (v: View, query?: string) => void;
@@ -143,12 +157,18 @@ export function ChatProvider({ session, children }: { session: Session; children
   // Names of huddles this user was invited to in conversations they can't see
   const [huddleTitles, setHuddleTitles] = useState<Record<string, string>>({});
   const [company, setCompany] = useState<Company | null>(null);
+  const [plans, setPlans] = useState<Record<string, Plan>>({});
+  const plan = company ? (plans[company.plan] ?? null) : null;
   const [companies, setCompanies] = useState<Company[]>([]);
   const [members, setMembers] = useState<Record<string, Member>>({});
   const [superAdmin, setSuperAdmin] = useState(false);
   const [memberCard, setMemberCard] = useState<string | null>(null);
   const [channelDetails, setChannelDetails] = useState<string | null>(null);
   const [allMeetings, setAllMeetings] = useState<Meeting[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [projectId, setProjectId] = useState<string | null>(null);
+  const [taskId, setTaskId] = useState<string | null>(null);
+  const [allNotifications, setAllNotifications] = useState<AppNotification[]>([]);
   const [loaded, setLoaded] = useState(false);
   // A conversation marked unread keeps its read cursor until the user navigates away
   const [heldRead, setHeldRead] = useState<string | null>(null);
@@ -172,7 +192,7 @@ export function ChatProvider({ session, children }: { session: Session; children
   }, []);
 
   const reload = useCallback(async () => {
-    const [{ data: profs }, { data: allMems }, { data: counts }, { data: prev }, { data: cos }, { data: dir }, { data: sa }] = await Promise.all([
+    const [{ data: profs }, { data: allMems }, { data: counts }, { data: prev }, { data: cos }, { data: dir }, { data: sa }, , { data: planRows }] = await Promise.all([
       supabase.from("profiles").select("*"),
       supabase.from("channel_members").select("*").eq("user_id", uid),
       supabase.rpc("unread_counts"),
@@ -181,6 +201,7 @@ export function ChatProvider({ session, children }: { session: Session; children
       supabase.rpc("company_directory"),
       supabase.rpc("is_super_admin"),
       loadThreadUnread(),
+      supabase.from("plans").select("*"),
     ]);
     const co = (profs ?? []).find((p) => p.id === uid)?.current_company_id ?? null;
     // Super admins get every conversation in the company so they can open any of them; the sidebar still lists only their own
@@ -197,6 +218,7 @@ export function ChatProvider({ session, children }: { session: Session; children
     setSuperAdmin(!!sa);
     setCompanies(cos ?? []);
     setCompany((cos ?? []).find((c) => c.id === co) ?? null);
+    setPlans(Object.fromEntries(((planRows ?? []) as Plan[]).map((p) => [p.id, p])));
     setMembers(dirMap);
     // The database treats super admins as owner of every company
     setProfiles(
@@ -231,6 +253,8 @@ export function ChatProvider({ session, children }: { session: Session; children
       setMemberCard(null);
       setChannelDetails(null);
       setViewState(null);
+      setProjectId(null);
+      setTaskId(null);
       await reload();
     },
     [reload],
@@ -295,6 +319,15 @@ export function ChatProvider({ session, children }: { session: Session; children
     setQuery(q);
     setThread(null);
     setChannelDetails(null);
+    setProjectId(null);
+  }, []);
+
+  const openProject = useCallback((id: string | null) => {
+    setHeldRead(null);
+    setViewState("projects");
+    setProjectId(id);
+    setThread(null);
+    setChannelDetails(null);
   }, []);
 
   // Opening something in the right pane replaces whatever it showed
@@ -328,6 +361,8 @@ export function ChatProvider({ session, children }: { session: Session; children
         setHuddleTitles((t) => ({ ...t, [ringId]: where }));
         setRing({ channelId: ringId, from, title: where });
       }
+      const task = params.get("task");
+      if (task) setTaskId(task);
       const c = params.get("c");
       if (!c) return false;
       setActive(c, params.get("m"));
@@ -344,7 +379,7 @@ export function ChatProvider({ session, children }: { session: Session; children
     reload().then(() => {
       // A link wins over the last opened conversation
       const params = new URLSearchParams(location.search);
-      if (params.has("c") || params.has("ring")) history.replaceState(null, "", "/");
+      if (params.has("c") || params.has("ring") || params.has("task")) history.replaceState(null, "", "/");
       if (!openLink(params)) setActiveId((cur) => cur ?? localStorage.getItem("tm:active"));
     });
   }, [reload, openLink]);
@@ -553,6 +588,83 @@ export function ChatProvider({ session, children }: { session: Session; children
 
   const meetings = useMemo(() => allMeetings.filter((m) => m.channels?.company_id === company?.id), [allMeetings, company]);
 
+  const companyId = company?.id;
+  const reloadProjects = useCallback(async () => {
+    if (!companyId) return setProjects([]);
+    const { data } = await supabase.from("projects").select("*, project_members(*)").eq("company_id", companyId).order("name");
+    setProjects((data as Project[]) ?? []);
+  }, [companyId]);
+
+  // Projects and their people
+  useEffect(() => {
+    // State is set after the async fetch resolves, not synchronously
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    reloadProjects();
+    const ch = supabase
+      .channel("projects")
+      .on("postgres_changes", { event: "*", schema: "public", table: "projects" }, () => reloadProjects())
+      .on("postgres_changes", { event: "*", schema: "public", table: "project_members" }, () => reloadProjects())
+      .subscribe();
+    return () => {
+      supabase.removeChannel(ch);
+    };
+  }, [uid, reloadProjects]);
+
+  // Saved notifications (task assignments): listed under Activity, and a toast or system notification as they arrive
+  useEffect(() => {
+    supabase
+      .from("notifications")
+      .select("*")
+      .eq("user_id", uid)
+      .order("created_at", { ascending: false })
+      .limit(100)
+      .then(({ data }) => setAllNotifications((data as AppNotification[]) ?? []));
+    const announce = (n: AppNotification) => {
+      if (inDnd(live.current.profiles[uid])) return;
+      const open = () => n.task_id && setTaskId(n.task_id);
+      chime();
+      // Same tag as the Web Push, so a closed-app push and this don't show twice
+      if (!document.hasFocus() && "Notification" in window && Notification.permission === "granted") {
+        const sys = new Notification(n.title, { body: n.body, tag: `task:${n.task_id}`, icon: (n.actor_id && live.current.profiles[n.actor_id]?.avatar_url) || "/asset/AppIcon.svg" });
+        sys.onclick = () => {
+          focusApp();
+          open();
+        };
+        return;
+      }
+      setToasts((t) => [...t.slice(-2), { id: n.id, title: n.title, body: n.body, from: n.actor_id ?? undefined, onOpen: open }]);
+      setTimeout(() => setToasts((t) => t.filter((x) => x.id !== n.id)), 7000);
+    };
+    const ch = supabase
+      .channel("notifications")
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "notifications", filter: `user_id=eq.${uid}` }, ({ new: row }) => {
+        const n = row as AppNotification;
+        setAllNotifications((ns) => (ns.some((x) => x.id === n.id) ? ns : [n, ...ns]));
+        announce(n);
+      })
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "notifications", filter: `user_id=eq.${uid}` }, ({ new: row }) =>
+        setAllNotifications((ns) => ns.map((x) => (x.id === (row as AppNotification).id ? (row as AppNotification) : x))),
+      )
+      .subscribe();
+    return () => {
+      supabase.removeChannel(ch);
+    };
+  }, [uid]);
+
+  const notifications = useMemo(() => allNotifications.filter((n) => !n.company_id || n.company_id === companyId), [allNotifications, companyId]);
+
+  // Marks these (or all unread in the company) as read
+  const markNotificationsRead = useCallback(
+    (ids?: string[]) => {
+      const target = new Set(ids ?? notifications.filter((n) => !n.read_at).map((n) => n.id));
+      if (!target.size) return;
+      const now = new Date().toISOString();
+      setAllNotifications((ns) => ns.map((n) => (target.has(n.id) && !n.read_at ? { ...n, read_at: now } : n)));
+      supabase.from("notifications").update({ read_at: now }).in("id", [...target]).is("read_at", null).then();
+    },
+    [notifications],
+  );
+
   // Scheduled meetings dial in by themselves: each invitee's client gives a heads-up shortly before,
   // then rings them at the start time with the same incoming-call dialog as a direct call
   useEffect(() => {
@@ -609,6 +721,12 @@ export function ChatProvider({ session, children }: { session: Session; children
   const setHuddle = useCallback(
     (channelId: string | null) => {
       // Hanging up before anyone answered stops the ringing on their end
+      // Calls are capped by the plan (Free: 1:1); joining a full call is refused here
+      const cap = plan?.max_call_participants;
+      if (channelId && channelId !== huddle && cap && (huddles[channelId]?.length ?? 0) >= cap) {
+        window.alert(`This call is full. The ${plan?.name} plan allows up to ${cap} people in a call${plan?.id === "free" ? "; upgrade to Pro for group calls" : ""}.`);
+        return;
+      }
       const ringingNow = Object.keys(rung);
       if (huddle && huddle !== channelId && ringingNow.length && !(huddles[huddle] ?? []).some((id) => id !== uid)) {
         huddleChannel()?.send({ type: "broadcast", event: "cancel", payload: { to: ringingNow, channelId: huddle, from: uid } });
@@ -629,7 +747,7 @@ export function ChatProvider({ session, children }: { session: Session; children
           .eq("channel_id", channelId)
           .then(({ data }) => ringHuddle(channelId, (data ?? []).map((r) => r.user_id).filter((id) => id !== uid)));
     },
-    [uid, huddle, rung, channels, dmMembers, huddles, meetings, ringHuddle],
+    [uid, huddle, rung, channels, dmMembers, huddles, meetings, ringHuddle, plan],
   );
 
   const inviteToHuddle = useCallback((userIds: string[]) => {
@@ -693,6 +811,7 @@ export function ChatProvider({ session, children }: { session: Session; children
             me: profiles[uid],
             profiles,
             company,
+            plan,
             companies,
             members,
             superAdmin,
@@ -727,6 +846,14 @@ export function ChatProvider({ session, children }: { session: Session; children
             huddleName,
             meetings,
             reloadMeetings,
+            projects,
+            reloadProjects,
+            projectId: projectId && projects.some((p) => p.id === projectId) ? projectId : null,
+            openProject,
+            taskId,
+            openTask: setTaskId,
+            notifications,
+            markNotificationsRead,
             setActive,
             setThread: openThread,
             setView,
@@ -738,7 +865,7 @@ export function ChatProvider({ session, children }: { session: Session; children
             channelTitle,
           }
         : null,
-    [profiles, company, companies, members, superAdmin, switchCompany, memberCard, showMember, channelDetails, showChannelDetails, openThread, uid, channels, memberships, dmMembers, unread, threadUnread, previews, online, away, activeId, thread, focusId, view, query, huddle, huddles, ring, huddleNotice, ringing, toasts, dismissToast, setHuddle, inviteToHuddle, dismissRing, huddleName, meetings, reloadMeetings, setActive, setView, markRead, markUnread, markThreadRead, updateMembership, reload, channelTitle],
+    [profiles, company, plan, companies, members, superAdmin, switchCompany, memberCard, showMember, channelDetails, showChannelDetails, openThread, uid, channels, memberships, dmMembers, unread, threadUnread, previews, online, away, activeId, thread, focusId, view, query, huddle, huddles, ring, huddleNotice, ringing, toasts, dismissToast, setHuddle, inviteToHuddle, dismissRing, huddleName, meetings, reloadMeetings, projects, reloadProjects, projectId, openProject, taskId, notifications, markNotificationsRead, setActive, setView, markRead, markUnread, markThreadRead, updateMembership, reload, channelTitle],
   );
 
   if (!loaded || !value) return <AppSkeleton />;

@@ -87,7 +87,7 @@ export function SidePanel({ title, onClose, children, wide }: { title: string; o
   );
 }
 
-export function Modal({ title, onClose, children, wide }: { title: string; onClose: () => void; children: React.ReactNode; wide?: boolean }) {
+export function Modal({ title, onClose, children, wide }: { title: React.ReactNode; onClose: () => void; children: React.ReactNode; wide?: boolean | "xl" }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     window.addEventListener("keydown", onKey);
@@ -95,7 +95,7 @@ export function Modal({ title, onClose, children, wide }: { title: string; onClo
   }, [onClose]);
   return (
     <div className="tm-fade fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-900/25 p-3 pt-[6vh] backdrop-blur-[2px] md:p-4 md:pt-[10vh]" onMouseDown={onClose}>
-      <div className={`tm-pop tm-float w-full rounded-2xl bg-white ${wide ? "max-w-2xl" : "max-w-lg"}`} onMouseDown={(e) => e.stopPropagation()}>
+      <div className={`tm-pop tm-float w-full rounded-2xl bg-white ${wide === "xl" ? "max-w-4xl" : wide ? "max-w-2xl" : "max-w-lg"}`} onMouseDown={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between px-6 pt-5 pb-3">
           <h2 className="text-lg font-semibold">{title}</h2>
           <button onClick={onClose} className="rounded-full p-1.5 text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-700" aria-label="Close">

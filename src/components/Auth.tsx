@@ -67,9 +67,10 @@ export function DesktopSignIn() {
 
 // recovery: the user arrived from a reset email and already has a session; onDone lets them into the app
 // redirectTo: where confirmation and reset emails link back to (default: the app)
-export default function Auth({ recovery, onDone, redirectTo }: { recovery?: boolean; onDone?: () => void; redirectTo?: string }) {
+// signup: open on "Create an account" (the public site's Get started buttons)
+export default function Auth({ recovery, onDone, redirectTo, signup }: { recovery?: boolean; onDone?: () => void; redirectTo?: string; signup?: boolean }) {
   const initialError = recovery ? null : linkError();
-  const [mode, setMode] = useState<Mode>(recovery ? "reset" : initialError ? "forgot" : "signin");
+  const [mode, setMode] = useState<Mode>(recovery ? "reset" : initialError ? "forgot" : signup ? "signup" : "signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
