@@ -333,7 +333,7 @@ function Requests({ notify }: { notify: (s: string) => void }) {
 }
 
 function Users({ notify }: { notify: (s: string) => void }) {
-  const { me, switchCompany } = useChat();
+  const { me, switchCompany, reload } = useChat();
   const [rows, setRows] = useState<UserRow[] | null>(null);
   const [q, setQ] = useState("");
 
@@ -348,6 +348,22 @@ function Users({ notify }: { notify: (s: string) => void }) {
     const { error } = await supabase.rpc("set_super_admin", { p_user: u.id, p_on: !u.super_admin });
     notify(error ? error.message : u.super_admin ? `${name} is no longer a super admin` : `${name} is now a super admin`);
     if (!error) load();
+  };
+
+  const removeFrom = async (u: UserRow, c: UserRow["companies"][number]) => {
+    const name = u.full_name || `@${u.username}`;
+    if (!confirm(`Remove ${name} from ${c.name}?`)) return;
+    const { error } = await supabase.rpc("remove_member", { p_user: u.id, p_company: c.id });
+    notify(error ? error.message : `${name} removed from ${c.name}`);
+    if (!error) await Promise.all([load(), reload()]);
+  };
+
+  const deleteUser = async (u: UserRow) => {
+    const name = u.full_name || `@${u.username}`;
+    if (prompt(`This permanently deletes ${name}'s account, including their messages and files. Type their email "${u.email}" to confirm.`) !== u.email) return;
+    const { error } = await supabase.rpc("platform_delete_user", { p_user: u.id });
+    notify(error ? error.message : `${name} deleted`);
+    if (!error) await Promise.all([load(), reload()]);
   };
 
   const shown = rows?.filter((u) => `${u.full_name} ${u.username} ${u.email} ${u.companies.map((c) => c.name).join(" ")}`.toLowerCase().includes(q.toLowerCase()));
@@ -378,21 +394,32 @@ function Users({ notify }: { notify: (s: string) => void }) {
               <span className="mt-1 flex flex-wrap gap-1">
                 {u.companies.length === 0 && <span className="text-xs text-zinc-400">No company</span>}
                 {u.companies.map((c) => (
-                  <button
-                    key={c.id}
-                    onClick={() => switchCompany(c.id)}
-                    title={`Open ${c.name}`}
-                    className={`rounded-md px-1.5 py-0.5 text-[11px] font-medium transition hover:ring-1 hover:ring-tm-blue/40 ${c.status === "active" ? "bg-tm-surface text-zinc-700" : "bg-red-50 text-red-600 line-through"}`}
-                  >
-                    {c.name} · {c.role}
-                  </button>
+                  <span key={c.id} className={`inline-flex items-center rounded-md text-[11px] font-medium ${c.status === "active" ? "bg-tm-surface text-zinc-700" : "bg-red-50 text-red-600"}`}>
+                    <button
+                      onClick={() => switchCompany(c.id)}
+                      title={`Open ${c.name}`}
+                      className={`rounded-md px-1.5 py-0.5 transition hover:ring-1 hover:ring-tm-blue/40 ${c.status === "active" ? "" : "line-through"}`}
+                    >
+                      {c.name} · {c.role}
+                    </button>
+                    {c.role !== "owner" && u.id !== me.id && (
+                      <button onClick={() => removeFrom(u, c)} title={`Remove from ${c.name}`} className="pr-1.5 text-zinc-400 hover:text-red-600">
+                        ×
+                      </button>
+                    )}
+                  </span>
                 ))}
               </span>
             </span>
             {u.id !== me.id && (
-              <button className={btnGhost} onClick={() => toggleSuper(u)}>
-                {u.super_admin ? "Remove super admin" : "Make super admin"}
-              </button>
+              <span className="flex gap-2">
+                <button className={btnGhost} onClick={() => toggleSuper(u)}>
+                  {u.super_admin ? "Remove super admin" : "Make super admin"}
+                </button>
+                <button className={`${btnGhost} text-red-600`} onClick={() => deleteUser(u)} title="Delete user">
+                  <Icon name="trash" size={16} />
+                </button>
+              </span>
             )}
           </li>
         ))}

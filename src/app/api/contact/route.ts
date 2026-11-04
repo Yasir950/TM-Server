@@ -1,14 +1,14 @@
 import type { NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { APP_NAME } from "@/lib/brand";
+import { sendMail } from "@/lib/mailer";
 
 // Contact form (public site) and plan upgrade requests (Admin > Plan).
-// Every request is saved to public.contact_requests, then emailed through Resend (RESEND_API_KEY) to CONTACT_EMAIL.
-// Without a Resend key the request is still saved and super admins see it in the app.
+// Every request is saved to public.contact_requests, then emailed (lib/mailer: Gmail SMTP or Resend) to CONTACT_EMAIL.
+// Without email configured the request is still saved and super admins see it in the app.
 
 const TO = process.env.CONTACT_EMAIL || "368yasir@gmail.com";
-// Resend's shared sender only delivers to the Resend account's own address; verify a domain to use your own
-const FROM = process.env.CONTACT_FROM || `${APP_NAME} <onboarding@resend.dev>`;
+const FROM = process.env.CONTACT_FROM;
 
 const KINDS = ["sales", "upgrade", "general"] as const;
 type Kind = (typeof KINDS)[number];
@@ -16,20 +16,7 @@ const LABEL: Record<Kind, string> = { sales: "Enterprise / sales inquiry", upgra
 
 const str = (v: unknown, max: number) => (typeof v === "string" ? v.trim().slice(0, max) : "");
 
-async function sendEmail(subject: string, text: string, replyTo: string) {
-  const key = process.env.RESEND_API_KEY;
-  if (!key) {
-    console.warn("contact: RESEND_API_KEY is not set, request saved but not emailed");
-    return false;
-  }
-  const res = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ from: FROM, to: [TO], reply_to: replyTo, subject, text }),
-  });
-  if (!res.ok) console.error("contact: Resend failed", res.status, await res.text().catch(() => ""));
-  return res.ok;
-}
+const sendEmail = (subject: string, text: string, replyTo: string) => sendMail({ to: TO, subject, text, replyTo }, FROM);
 
 export async function POST(req: NextRequest) {
   const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;

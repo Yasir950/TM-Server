@@ -1,11 +1,12 @@
 import Link from "next/link";
 import { APP_NAME } from "@/lib/brand";
 import { Icon, type IconName } from "@/components/icons";
-import { AppWindow, CallMockup, SummaryMockup, WorkflowMockup, Devices } from "@/components/site/Mockups";
+import { AppWindow, ProjectWindow, CallMockup, SummaryMockup, WorkflowMockup, Devices } from "@/components/site/Mockups";
 import { SIGN_UP, NAVY, btnGreen, btnOutlineLight, btnPrimary, Eyebrow, FeatureIcon, Check, CtaBand } from "@/components/site/Site";
 
 const pillars: [IconName, string, string][] = [
-  ["messages", "Channels for every project", "Give each team, project and topic its own space, so the right people see the right conversations."],
+  ["kanban", "Projects and tasks", "Plan work on boards and lists, assign owners and due dates, and see what's blocked at a glance."],
+  ["messages", "Channels for every team", "Give each team, project and topic its own space, so the right people see the right conversations."],
   ["video", "Meet in one click", "Jump from a message into a voice or video call with screen sharing, or schedule one that rings everyone on time."],
   ["list", "Docs that live with the chat", "Each channel has a canvas for plans, notes and checklists that the whole team edits together."],
 ];
@@ -66,14 +67,14 @@ export default function Home() {
         <div className="relative mx-auto max-w-7xl px-4 pt-20 pb-16 text-center sm:px-6 sm:pt-28 lg:px-8">
           <p className="mx-auto inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-4 py-1.5 text-sm text-white/80">
             <span className="h-2 w-2 rounded-full bg-tm-green" />
-            Messaging, meetings and docs in one place
+            Projects, messaging and meetings in one place
           </p>
           <h1 className="mx-auto mt-7 max-w-4xl text-4xl font-bold tracking-tight text-white sm:text-6xl lg:text-7xl">
             The place your team <span className="bg-gradient-to-r from-[#6fb6ef] to-tm-green bg-clip-text text-transparent">actually works</span>
           </h1>
           <p className="mx-auto mt-6 max-w-2xl text-lg leading-8 text-white/70 sm:text-xl">
-            {APP_NAME} brings your conversations, calls, files and plans together, so decisions happen faster and nobody has to dig
-            through email to catch up.
+            {APP_NAME} brings your projects, tasks, conversations and calls together, so work moves forward and nobody has to dig through
+            email or spreadsheets to see where things stand.
           </p>
           <div className="mt-10 flex flex-col justify-center gap-3 sm:flex-row">
             <Link href={SIGN_UP} className={btnGreen}>
@@ -97,7 +98,7 @@ export default function Home() {
           <h2 className="mt-3 text-3xl font-bold tracking-tight sm:text-5xl">Less noise, more getting things done</h2>
           <p className="mt-5 text-lg text-zinc-600">Organized conversations replace scattered email threads, meeting links and status updates.</p>
         </div>
-        <div className="mt-16 grid gap-6 md:grid-cols-3">
+        <div className="mt-16 grid gap-6 md:grid-cols-2 lg:grid-cols-4">
           {pillars.map(([icon, title, body]) => (
             <div key={title} className="rounded-2xl border border-zinc-200 p-8 transition hover:-translate-y-0.5 hover:shadow-lg">
               <FeatureIcon name={icon} />
@@ -105,6 +106,40 @@ export default function Home() {
               <p className="mt-3 leading-7 text-zinc-600">{body}</p>
             </div>
           ))}
+        </div>
+      </section>
+
+      {/* Projects */}
+      <section id="projects" className="relative scroll-mt-24 overflow-hidden py-24" style={{ background: NAVY }}>
+        <div className="pointer-events-none absolute -top-40 right-0 h-96 w-[700px] rounded-full bg-tm-blue/30 blur-3xl" />
+        <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+          <div className="grid gap-10 lg:grid-cols-2 lg:gap-20">
+            <div>
+              <Eyebrow light>Projects</Eyebrow>
+              <h2 className="mt-3 text-3xl font-bold tracking-tight text-white sm:text-5xl">Plan the work right next to the conversation</h2>
+              <p className="mt-5 text-lg leading-8 text-white/70">
+                Give every project a board. Break the work into tasks, bugs and stories, drag them from To do to Done, and keep the
+                discussion on the task where everyone can find it.
+              </p>
+            </div>
+            <ul className="space-y-4 self-end text-[15px] text-white/80">
+              {[
+                "Board and list views with To do, In progress, In review and Done",
+                "Priorities, labels, assignees and due dates that flag overdue work",
+                "Comments, change history and a My tasks view across every project",
+              ].map((p) => (
+                <li key={p} className="flex gap-3">
+                  <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-tm-green text-white">
+                    <Icon name="check" size={13} />
+                  </span>
+                  {p}
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div className="mx-auto mt-14 max-w-6xl">
+            <ProjectWindow />
+          </div>
         </div>
       </section>
 

@@ -1,12 +1,10 @@
 import type { NextRequest } from "next/server";
 import { APP_NAME } from "@/lib/brand";
+import { mailConfigured, sendMail } from "@/lib/mailer";
 
 // Called by email_to() in the database over pg_net, never by browsers:
 // POST {"to": "...", "template": "task_assigned", "data": {...}} with X-Push-Secret matching PUSH_SECRET.
-// Sends through Resend; onboarding@resend.dev only delivers to the Resend account's own address,
-// so set EMAIL_FROM to an address on a domain verified at Resend.
-
-const FROM = process.env.EMAIL_FROM || process.env.CONTACT_FROM || `${APP_NAME} <onboarding@resend.dev>`;
+// Sent by lib/mailer: Gmail SMTP when SMTP_USER/SMTP_PASS are set, otherwise Resend from EMAIL_FROM.
 
 type TaskAssigned = {
   actor: string;
@@ -70,22 +68,13 @@ ${d.description ? `<tr><td style="padding:4px 28px 12px;font-size:14px;color:#37
 export async function POST(req: NextRequest) {
   const secret = process.env.PUSH_SECRET;
   if (!secret || req.headers.get("x-push-secret") !== secret) return Response.json({ error: "forbidden" }, { status: 403 });
-  const key = process.env.RESEND_API_KEY;
-  if (!key) return Response.json({ error: "email_not_configured" }, { status: 503 });
+  if (!mailConfigured()) return Response.json({ error: "email_not_configured" }, { status: 503 });
 
   const { to, template, data } = (await req.json().catch(() => ({}))) as { to?: string; template?: string; data?: unknown };
   if (!to || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(to)) return Response.json({ error: "invalid_recipient" }, { status: 400 });
   if (template !== "task_assigned" || !data) return Response.json({ error: "unknown_template" }, { status: 400 });
 
   const mail = taskAssigned(data as TaskAssigned);
-  const res = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ from: FROM, to: [to], ...mail }),
-  });
-  if (!res.ok) {
-    console.error("email: Resend failed", res.status, await res.text().catch(() => ""));
-    return Response.json({ error: "send_failed" }, { status: 502 });
-  }
+  if (!(await sendMail({ to, ...mail }))) return Response.json({ error: "send_failed" }, { status: 502 });
   return Response.json({ sent: 1 });
 }

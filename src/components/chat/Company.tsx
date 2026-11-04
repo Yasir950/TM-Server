@@ -574,6 +574,19 @@ export function MemberCard() {
                   Transfer ownership
                 </button>
               )}
+              <button
+                className={`${btnGhost} text-red-600`}
+                onClick={async () => {
+                  if (!confirm(`Remove ${displayName(p)} from the company? They lose access to its channels and projects. Their messages stay.`)) return;
+                  const { error } = await supabase.rpc("remove_member", { p_user: m.user_id });
+                  setError(error?.message ?? "");
+                  if (error) return;
+                  close();
+                  await reload();
+                }}
+              >
+                Remove from company
+              </button>
             </div>
           </div>
         )}
@@ -595,19 +608,60 @@ export function ProfileModal({ onClose }: { onClose: () => void }) {
   const [phone, setPhone] = useState(mine?.phone ?? "");
   const [phoneVisible, setPhoneVisible] = useState(mine?.phone_visible ?? false);
   const [email, setEmail] = useState(mine?.email ?? "");
+  // The account's real email and any change still waiting for confirmation, read from Supabase Auth
+  // (members[].email only changes once a change is confirmed, so comparing against it re-sends emails)
+  const [authEmail, setAuthEmail] = useState<{ current: string; pending: string } | null>(null);
   const [notice, setNotice] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      const current = data.user?.email ?? "";
+      const pending = data.user?.new_email ?? "";
+      setAuthEmail({ current, pending });
+      if (current) setEmail(pending || current);
+    });
+  }, []);
 
   const save = async () => {
     if (phone && !/^\+[1-9]\d{6,14}$/.test(phone.replace(/[\s()-]/g, ""))) return setNotice("Enter the phone number with its country code, e.g. +44 20 7946 0000");
-    const results = await Promise.all([
+    const nextEmail = email.trim().toLowerCase();
+    if (nextEmail && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(nextEmail)) return setNotice("Enter a valid email address.");
+    const current = (authEmail?.current ?? mine?.email ?? "").toLowerCase();
+    const pending = (authEmail?.pending ?? "").toLowerCase();
+    // Only ask Supabase to send confirmation emails for a genuinely new address
+    const emailChanged = !!nextEmail && nextEmail !== current && nextEmail !== pending;
+
+    setBusy(true);
+    setNotice("");
+    const [profileRes, memberRes] = await Promise.all([
       supabase.from("profiles").update({ full_name: fullName.trim(), username: username.trim().toLowerCase() }).eq("id", me.id),
       supabase.from("company_members").update({ designation: designation.trim(), phone: phone.replace(/[\s()-]/g, ""), phone_visible: phoneVisible }).eq("company_id", me.current_company_id).eq("user_id", me.id),
-      email.trim() && email.trim() !== mine?.email ? supabase.auth.updateUser({ email: email.trim() }, { emailRedirectTo: `${window.location.origin}/app` }) : Promise.resolve({ error: null }),
     ]);
-    const err = results.find((r) => r.error)?.error;
-    if (err) return setNotice(err.message);
+    const profileErr = profileRes.error ?? memberRes.error;
+    if (profileErr) {
+      setBusy(false);
+      return setNotice(profileErr.message);
+    }
+
+    let emailMsg = "";
+    if (emailChanged) {
+      const { error } = await supabase.auth.updateUser({ email: nextEmail }, { emailRedirectTo: `${window.location.origin}/app` });
+      if (!error) {
+        setAuthEmail({ current, pending: nextEmail });
+        emailMsg = ` Check ${current || "your old inbox"} and ${nextEmail} to confirm the new email address.`;
+      } else if (error.status === 429 || /rate limit/i.test(error.message)) {
+        emailMsg = " Your email wasn't changed: too many confirmation emails were sent recently. Please try again in an hour.";
+      } else {
+        emailMsg = ` Your email wasn't changed: ${error.message}`;
+      }
+    } else if (pending && nextEmail === pending) {
+      emailMsg = ` Your change to ${pending} is still waiting for confirmation. Check both inboxes.`;
+    }
+
     await reload();
-    setNotice(email.trim() !== mine?.email ? "Saved. Check both inboxes to confirm the new email address." : "Saved");
+    setBusy(false);
+    setNotice(`Profile saved.${emailMsg}`);
   };
 
   return (
@@ -641,7 +695,7 @@ export function ProfileModal({ onClose }: { onClose: () => void }) {
         {notice && <p className="text-sm text-zinc-600">{notice}</p>}
         <div className="flex justify-end gap-2">
           <button className={btnGhost} onClick={onClose}>Close</button>
-          <button className={btn} onClick={save}>Save</button>
+          <button className={btn} onClick={save} disabled={busy}>{busy ? "Saving…" : "Save"}</button>
         </div>
       </div>
     </Modal>

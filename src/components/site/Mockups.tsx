@@ -53,6 +53,277 @@ function Reaction({ emoji, count, mine }: { emoji: string; count: number; mine?:
 
 const mention = "rounded bg-tm-blue-light px-1 font-medium text-tm-blue";
 
+// The app's left rail, as in components/chat/Chat.tsx: workspace, Home, DMs, Activity, Tasks, Saved, Reminders
+function Rail() {
+  const items: [IconName, number?][] = [["home"], ["dms", 2], ["bell", 3], ["checkSquare"], ["bookmark"], ["clock"]];
+  return (
+    <div className="hidden w-16 shrink-0 flex-col items-center gap-3 pt-4 sm:flex" style={{ background: NAVY }}>
+      <span className="mb-1 flex h-10 w-10 items-center justify-center rounded-[30%] bg-white text-sm font-bold text-tm-blue ring-2 ring-white/20">AS</span>
+      {items.map(([n, count], i) => (
+        <span key={n} className={`relative flex h-10 w-10 items-center justify-center rounded-xl ${i === 0 ? "bg-white/20 text-white" : "text-white/70"}`}>
+          <Icon name={n} size={20} />
+          {count && (
+            <span
+              className="absolute -top-1 -right-1.5 min-w-[18px] rounded-full bg-tm-green px-1 text-center text-[10px] leading-[18px] font-bold text-white"
+              style={{ boxShadow: `0 0 0 2px ${NAVY}` }}
+            >
+              {count}
+            </span>
+          )}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+// Task bits, matching the real board in components/chat/Projects.tsx
+type TaskType = "task" | "bug" | "story" | "epic";
+type Priority = "highest" | "high" | "medium" | "low";
+const typeStyle: Record<TaskType, [IconName, string]> = {
+  task: ["check", "bg-tm-blue"],
+  bug: ["bug", "bg-red-500"],
+  story: ["bookmark", "bg-tm-green"],
+  epic: ["zap", "bg-purple-500"],
+};
+const priorityStyle: Record<Priority, [IconName, string]> = {
+  highest: ["chevronsUp", "text-red-600"],
+  high: ["chevronUp", "text-orange-500"],
+  medium: ["equal", "text-amber-500"],
+  low: ["chevronDown", "text-tm-blue"],
+};
+
+function TypeIcon({ type, size = 16 }: { type: TaskType; size?: number }) {
+  const [icon, bg] = typeStyle[type];
+  return (
+    <span className={`inline-flex shrink-0 items-center justify-center rounded text-white ${bg}`} style={{ width: size, height: size }}>
+      <Icon name={icon} size={size * 0.7} />
+    </span>
+  );
+}
+
+function PriorityIcon({ priority, size = 16 }: { priority: Priority; size?: number }) {
+  const [icon, color] = priorityStyle[priority];
+  return (
+    <span className={color}>
+      <Icon name={icon} size={size} />
+    </span>
+  );
+}
+
+type SampleTask = { n: number; title: string; type: TaskType; priority: Priority; who?: Person; due?: string; late?: boolean; labels?: string[] };
+
+function TaskCard({ task, done }: { task: SampleTask; done?: boolean }) {
+  return (
+    <div className="rounded-xl bg-white p-3 shadow-sm ring-1 ring-black/5">
+      <div className={`text-[13px] leading-5 ${done ? "text-zinc-500" : "text-zinc-900"}`}>{task.title}</div>
+      {task.labels && (
+        <div className="mt-1.5 flex flex-wrap gap-1">
+          {task.labels.map((l) => (
+            <span key={l} className="rounded bg-tm-blue-light px-1.5 py-px text-[11px] font-medium text-tm-blue-dark">
+              {l}
+            </span>
+          ))}
+        </div>
+      )}
+      <div className="mt-2.5 flex items-center gap-1.5">
+        <TypeIcon type={task.type} />
+        <span className={`text-xs font-medium text-zinc-500 ${done ? "line-through" : ""}`}>ONB-{task.n}</span>
+        {task.due && (
+          <span className={`flex items-center gap-0.5 rounded px-1 text-[11px] ${task.late ? "bg-red-50 font-semibold text-red-600" : "text-zinc-500"}`}>
+            <Icon name="calendar" size={11} />
+            {task.due}
+          </span>
+        )}
+        <span className="ml-auto flex items-center gap-1.5">
+          <PriorityIcon priority={task.priority} />
+          {task.who ? (
+            <Avatar who={task.who} size={22} />
+          ) : (
+            <span className="flex h-[22px] w-[22px] items-center justify-center rounded-[30%] border border-dashed border-zinc-300 text-zinc-300">
+              <Icon name="users" size={11} />
+            </span>
+          )}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+const board: [string, SampleTask[]][] = [
+  [
+    "To do",
+    [
+      { n: 18, title: "Dark mode for the welcome screens", type: "story", priority: "medium", who: "priya", due: "Nov 18", labels: ["design"] },
+      { n: 21, title: "Localize onboarding copy (ES, FR)", type: "task", priority: "low", labels: ["i18n"] },
+      { n: 22, title: "Add a skip button to the product tour", type: "task", priority: "low", who: "sam" },
+    ],
+  ],
+  [
+    "In progress",
+    [
+      { n: 12, title: "Lock final copy for the welcome screens", type: "task", priority: "high", who: "dana", due: "Nov 6", labels: ["copy"] },
+      { n: 15, title: "Invite-your-teammates step", type: "story", priority: "medium", who: "marcus", due: "Nov 12", labels: ["frontend"] },
+    ],
+  ],
+  [
+    "In review",
+    [
+      { n: 19, title: "Signup fails when the email contains a +", type: "bug", priority: "highest", who: "sam", due: "Nov 3", late: true },
+      { n: 14, title: "Progress checklist widget", type: "story", priority: "medium", who: "priya", labels: ["frontend"] },
+    ],
+  ],
+  [
+    "Done",
+    [
+      { n: 9, title: "Beta signup form", type: "story", priority: "high", who: "marcus" },
+      { n: 11, title: "Analytics events for each onboarding step", type: "task", priority: "medium", who: "dana" },
+    ],
+  ],
+];
+
+function KeyBadge({ k, size = 24, color = "bg-tm-blue" }: { k: string; size?: number; color?: string }) {
+  return (
+    <span className={`flex shrink-0 items-center justify-center rounded-md font-bold text-white ${color}`} style={{ width: size, height: size, fontSize: size * 0.34 }}>
+      {k}
+    </span>
+  );
+}
+
+// A project's board in the app window: rail, sidebar with projects, and the board's columns
+export function ProjectWindow() {
+  const projects: [string, string, string, boolean?][] = [
+    ["ONB", "Onboarding v2", "bg-tm-blue", true],
+    ["WEB", "Website refresh", "bg-tm-green"],
+    ["MOB", "Mobile app", "bg-purple-500"],
+  ];
+  const channels: [string, number?][] = [["general"], ["launch-q4"], ["design", 3]];
+  return (
+    <div className="overflow-hidden rounded-2xl bg-white shadow-2xl ring-1 shadow-black/30 ring-black/10">
+      {/* Title bar */}
+      <div className="flex h-10 items-center gap-2 px-4" style={{ background: NAVY }}>
+        <span className="h-3 w-3 rounded-full bg-[#ff5f57]" />
+        <span className="h-3 w-3 rounded-full bg-[#febc2e]" />
+        <span className="h-3 w-3 rounded-full bg-[#28c840]" />
+        <div className="mx-auto hidden w-full max-w-md items-center gap-2 rounded-md bg-white/10 px-3 py-1 text-xs text-white/60 sm:flex">
+          <Icon name="search" size={13} />
+          Search Acme Studio
+        </div>
+      </div>
+      <div className="flex h-[440px] text-left sm:h-[500px]">
+        <Rail />
+        {/* Sidebar */}
+        <div className="hidden w-56 shrink-0 flex-col border-r border-tm-line bg-tm-surface md:flex">
+          <div className="flex h-14 items-center justify-between px-4">
+            <span className="font-semibold text-zinc-900">Acme Studio</span>
+            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-white text-zinc-600 shadow-sm">
+              <Icon name="pencil" size={15} />
+            </span>
+          </div>
+          <div className="px-2 text-[14px]">
+            <p className="px-2 pt-2 pb-1 text-xs font-medium text-zinc-500">Projects</p>
+            <div className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-zinc-600">
+              <span className="flex h-5 w-5 items-center justify-center text-zinc-400">
+                <Icon name="checkSquare" size={16} />
+              </span>
+              <span className="flex-1">My tasks</span>
+              <span className="rounded-full bg-tm-green px-1.5 text-[11px] font-semibold text-white">4</span>
+            </div>
+            {projects.map(([k, name, color, active]) => (
+              <div key={k} className={`flex items-center gap-2 rounded-lg px-2 py-1.5 ${active ? "bg-tm-blue text-white" : "text-zinc-600"}`}>
+                <KeyBadge k={k} size={20} color={active ? "bg-white/20" : color} />
+                <span className="flex-1 truncate">{name}</span>
+              </div>
+            ))}
+            <p className="px-2 pt-4 pb-1 text-xs font-medium text-zinc-500">Channels</p>
+            {channels.map(([name, unread]) => (
+              <div key={name} className={`flex items-center gap-2 rounded-lg px-2 py-1.5 ${unread ? "font-semibold text-zinc-900" : "text-zinc-600"}`}>
+                <span className="opacity-70">#</span>
+                <span className="flex-1">{name}</span>
+                {unread && <span className="rounded-full bg-tm-green px-1.5 text-[11px] font-semibold text-white">{unread}</span>}
+              </div>
+            ))}
+            <p className="px-2 pt-4 pb-1 text-xs font-medium text-zinc-500">Direct messages</p>
+            {(["marcus", "dana"] as const).map((p) => (
+              <div key={p} className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-zinc-600">
+                <span className="relative">
+                  <Avatar who={p} size={20} />
+                  <span className="absolute -right-0.5 -bottom-0.5 h-2 w-2 rounded-full border border-white bg-tm-green" />
+                </span>
+                {people[p].name}
+              </div>
+            ))}
+          </div>
+        </div>
+        {/* Project board */}
+        <div className="flex min-w-0 flex-1 flex-col">
+          <div className="flex h-14 shrink-0 items-center gap-2 border-b border-tm-line px-5">
+            <span className="hidden text-sm text-zinc-500 sm:inline">Projects</span>
+            <span className="hidden text-zinc-300 sm:inline">/</span>
+            <KeyBadge k="ONB" />
+            <span className="truncate text-lg font-semibold text-zinc-900">Onboarding v2</span>
+            <div className="ml-auto flex shrink-0 items-center gap-1.5">
+              <span className="hidden rounded-xl bg-tm-surface p-1 text-sm font-medium sm:flex">
+                <span className="flex items-center gap-1.5 rounded-lg bg-white px-2.5 py-1 text-tm-blue shadow-sm">
+                  <Icon name="kanban" size={15} />
+                  <span className="hidden lg:inline">Board</span>
+                </span>
+                <span className="flex items-center gap-1.5 px-2.5 py-1 text-zinc-500">
+                  <Icon name="list" size={15} />
+                  <span className="hidden lg:inline">List</span>
+                </span>
+              </span>
+              <span className="p-2 text-zinc-500">
+                <Icon name="settings" size={18} />
+              </span>
+              <span className="flex items-center gap-1.5 rounded-lg bg-tm-blue px-3 py-1.5 text-sm font-semibold text-white">
+                <Icon name="plus" size={16} />
+                <span className="hidden sm:inline">Create</span>
+              </span>
+            </div>
+          </div>
+          <div className="flex shrink-0 items-center gap-2 border-b border-tm-line px-5 py-2">
+            <div className="flex w-44 items-center gap-2 rounded-xl border border-tm-line bg-tm-surface px-3 py-1.5 text-sm text-zinc-400">
+              <Icon name="search" size={15} />
+              Search this board
+            </div>
+            <span className="flex -space-x-1">
+              {(["priya", "marcus", "dana", "sam"] as const).map((p, i) => (
+                <span key={p} className={`rounded-[30%] ring-2 ${i === 2 ? "z-10 ring-tm-blue" : "ring-white"}`}>
+                  <Avatar who={p} size={26} />
+                </span>
+              ))}
+            </span>
+            <span className="hidden rounded-lg px-2.5 py-1 text-sm text-zinc-600 lg:inline">Only my tasks</span>
+            <span className="hidden items-center gap-1 px-1.5 py-1 text-sm text-zinc-600 lg:flex">
+              All types <Icon name="chevronDown" size={14} />
+            </span>
+          </div>
+          <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 overflow-hidden p-3 sm:grid-cols-2 lg:grid-cols-4">
+            {board.map(([label, tasks], i) => (
+              <div key={label} className={`flex-col rounded-2xl bg-tm-surface ${i === 0 ? "flex" : i === 1 ? "hidden sm:flex" : "hidden lg:flex"}`}>
+                <div className="flex items-center gap-2 px-3 pt-3 pb-2">
+                  <span className="text-xs font-semibold tracking-wide text-zinc-500 uppercase">{label}</span>
+                  <span className="rounded-full bg-white px-1.5 text-xs font-semibold text-zinc-500">{tasks.length}</span>
+                  {label === "Done" && (
+                    <span className="text-tm-green">
+                      <Icon name="check" size={14} />
+                    </span>
+                  )}
+                </div>
+                <div className="space-y-2 px-2 pb-2">
+                  {tasks.map((t) => (
+                    <TaskCard key={t.n} task={t} done={label === "Done"} />
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // The main app window: rail, sidebar, channel with messages and a composer
 export function AppWindow() {
   const channels: [string, boolean?, number?][] = [["general"], ["launch-q4", true], ["design", false, 3], ["engineering"], ["random"]];
@@ -69,15 +340,7 @@ export function AppWindow() {
         </div>
       </div>
       <div className="flex h-[440px] text-left sm:h-[480px]">
-        {/* Rail */}
-        <div className="hidden w-16 shrink-0 flex-col items-center gap-4 pt-4 sm:flex" style={{ background: NAVY }}>
-          <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-white text-sm font-bold text-tm-blue">AS</span>
-          {(["home", "dms", "bell", "bookmark"] as const).map((n, i) => (
-            <span key={n} className={`flex h-10 w-10 items-center justify-center rounded-xl ${i === 0 ? "bg-white/15 text-white" : "text-white/55"}`}>
-              <Icon name={n} size={20} />
-            </span>
-          ))}
-        </div>
+        <Rail />
         {/* Sidebar */}
         <div className="hidden w-56 shrink-0 flex-col border-r border-tm-line bg-tm-surface md:flex">
           <div className="flex h-14 items-center justify-between px-4">

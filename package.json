@@ -20,6 +20,7 @@
     "@tiptap/starter-kit": "^3.32.2",
     "emoji-picker-react": "^5.1.4",
     "next": "16.4.4",
+    "nodemailer": "^10.3.1",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "web-push": "^3.6.7"
@@ -27,6 +28,7 @@
   "devDependencies": {
     "@tailwindcss/turbopack": "^4",
     "@types/node": "^20",
+    "@types/nodemailer": "^8.0.2",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@types/web-push": "^3.6.4",
