@@ -4,7 +4,14 @@ import { supabase } from "./supabase";
 // service; it stays running in the tray instead and exposes this bridge (desktop/preload.js).
 declare global {
   interface Window {
-    workchime?: { show: () => void; ring: () => void };
+    workchime?: {
+      show: () => void;
+      ring: () => void;
+      // Browser sign-in (components/Auth.tsx DesktopSignIn); absent in desktop builds before 1.1.0
+      signIn?: () => void;
+      takeAuth?: () => Promise<string | null>;
+      onAuth?: (cb: () => void) => () => void;
+    };
   }
 }
 

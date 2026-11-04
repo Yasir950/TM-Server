@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { signOut } from "@/lib/push";
 import { Logo, btn, input } from "./ui";
@@ -23,8 +23,51 @@ function linkError() {
   return text ? { error: true, text: `${text.replace(/\+/g, " ")}. Request a new reset link below.` } : null;
 }
 
+// Desktop app: signing in (or up) happens in the browser at app/desktop-auth, which sends back a one-time token
+// through a workchime:// link that desktop/main.js holds for takeAuth()
+export function DesktopSignIn() {
+  const [waiting, setWaiting] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    const take = async () => {
+      const tokenHash = await window.workchime?.takeAuth?.();
+      if (!tokenHash) return;
+      setWaiting(true);
+      const { error } = await supabase.auth.verifyOtp({ token_hash: tokenHash, type: "magiclink" });
+      if (!error) return;
+      setError(`${error.message}. Try signing in again.`);
+      setWaiting(false);
+    };
+    take();
+    return window.workchime?.onAuth?.(take);
+  }, []);
+
+  return (
+    <div className="flex min-h-full flex-col items-center justify-center bg-white px-4 py-12 text-center">
+      <Logo height={60} />
+      <h1 className="mt-8 text-3xl font-bold">Welcome to {APP_NAME}</h1>
+      <p className="mt-2 max-w-sm text-sm text-zinc-500">
+        {waiting ? "Finish signing in in your browser, then come back here." : "We'll open your browser so you can sign in or create an account."}
+      </p>
+      <button
+        className={`${btn} mt-8 w-full max-w-sm py-2.5`}
+        onClick={() => {
+          setError("");
+          setWaiting(true);
+          window.workchime?.signIn?.();
+        }}
+      >
+        {waiting ? "Open the browser again" : "Sign in with your browser"}
+      </button>
+      {error && <p className="mt-3 max-w-sm text-sm text-red-600">{error}</p>}
+    </div>
+  );
+}
+
 // recovery: the user arrived from a reset email and already has a session; onDone lets them into the app
-export default function Auth({ recovery, onDone }: { recovery?: boolean; onDone?: () => void }) {
+// redirectTo: where confirmation and reset emails link back to (default: the app)
+export default function Auth({ recovery, onDone, redirectTo }: { recovery?: boolean; onDone?: () => void; redirectTo?: string }) {
   const initialError = recovery ? null : linkError();
   const [mode, setMode] = useState<Mode>(recovery ? "reset" : initialError ? "forgot" : "signin");
   const [email, setEmail] = useState("");
@@ -46,7 +89,7 @@ export default function Auth({ recovery, onDone }: { recovery?: boolean; onDone?
     if (mode === "reset" && password !== confirm) return setMsg({ error: true, text: "Passwords don't match." });
     setBusy(true);
     if (mode === "forgot") {
-      const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin });
+      const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: redirectTo ?? window.location.origin });
       setBusy(false);
       if (error) setMsg({ error: true, text: error.message });
       else setMsg({ text: "If an account exists for that email, a reset link is on its way. Check your inbox." });
@@ -62,7 +105,7 @@ export default function Auth({ recovery, onDone }: { recovery?: boolean; onDone?
     const { data, error } =
       mode === "signin"
         ? await supabase.auth.signInWithPassword({ email, password })
-        : await supabase.auth.signUp({ email, password, options: { data: { full_name: fullName }, emailRedirectTo: window.location.origin } });
+        : await supabase.auth.signUp({ email, password, options: { data: { full_name: fullName }, emailRedirectTo: redirectTo ?? window.location.origin } });
     setBusy(false);
     if (error) setMsg({ error: true, text: error.message });
     else if (mode === "signup" && !data.session) setMsg({ text: "Check your email to confirm your account." });

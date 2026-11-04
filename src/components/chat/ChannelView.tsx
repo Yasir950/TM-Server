@@ -181,6 +181,11 @@ export default function ChannelView({ channelId }: { channelId: string }) {
       </div>
       {channel.archived ? (
         <div className="m-5 mt-0 rounded-2xl bg-tm-surface p-4 text-center text-sm text-zinc-500">🗄️ This channel is archived. You can read its history, but no one can post.</div>
+      ) : !memberships[channelId] ? (
+        // Only super admins can open a conversation they are not in
+        <div className="m-5 mt-0 rounded-2xl bg-tm-surface p-4 text-center text-sm text-zinc-500">
+          🛡️ You&apos;re viewing this {isDM ? "conversation" : "channel"} as a super admin. You aren&apos;t a member, so you can read but not post.
+        </div>
       ) : (
         <Composer channelId={channelId} placeholder={`Message ${isDM ? title : "#" + title}`} onSent={upsert} onTyping={sendTyping} />
       )}

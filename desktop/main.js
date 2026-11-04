@@ -1,22 +1,37 @@
 // Workchime desktop: a native window around the hosted web app.
 // Closing the window keeps it running in the tray, so messages and calls still arrive (Electron has no Web Push).
 const { app, BrowserWindow, Menu, Tray, ipcMain, nativeImage, shell, session, desktopCapturer, systemPreferences } = require("electron");
+const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
 
 const APP_URL = process.env.WORKCHIME_URL || "https://workchime.vercel.app/";
 const ORIGIN = new URL(APP_URL).origin;
+// Sign-in links from the website: workchime://auth?state=…&token_hash=…
+const PROTOCOL = "workchime";
 
 let win;
 let tray;
 let quitting = false;
+// One-time sign-in token from the website, until the web app takes it (preload.js takeAuth)
+let pendingToken = null;
 
 // Started by the OS at login: stay in the tray until opened
 const startHidden = process.argv.includes("--hidden") || (process.platform === "darwin" && app.getLoginItemSettings().wasOpenedAsHidden);
 
 if (!app.requestSingleInstanceLock()) app.quit();
 else {
-  app.on("second-instance", () => showWindow());
+  // Windows and Linux deliver sign-in links as an argument to a second launch
+  app.on("second-instance", (_e, argv) => {
+    const link = argv.find((a) => a.startsWith(`${PROTOCOL}://`));
+    if (link) handleLink(link);
+    else showWindow();
+  });
+  // macOS delivers them as an event, possibly before the app is ready
+  app.on("open-url", (e, url) => {
+    e.preventDefault();
+    handleLink(url);
+  });
   app.whenReady().then(start);
 }
 
@@ -63,10 +78,59 @@ async function start() {
     showWindow();
     win.flashFrame(true);
   });
+  ipcMain.on("sign-in", (e) => fromApp(e) && beginSignIn());
+  ipcMain.handle("take-auth", (e) => {
+    if (!fromApp(e)) return null;
+    const token = pendingToken;
+    pendingToken = null;
+    return token;
+  });
+
+  // Unpackaged (npm start) runs through electron.exe, which needs the app path to relaunch with
+  if (process.defaultApp) app.setAsDefaultProtocolClient(PROTOCOL, process.execPath, [path.resolve(process.argv[1])]);
+  else app.setAsDefaultProtocolClient(PROTOCOL);
 
   createTray();
   createWindow();
   app.on("activate", () => showWindow());
+
+  // Launched by a sign-in link while the app wasn't running (Windows)
+  const link = process.argv.find((a) => a.startsWith(`${PROTOCOL}://`));
+  if (link) handleLink(link);
+}
+
+// Browser sign-in, like Slack: the website (src/app/desktop-auth) signs the user in and sends back a one-time token.
+// The state is kept on disk so the link still works if the app was quit and is relaunched by it.
+const stateFile = () => path.join(app.getPath("userData"), "sign-in-state.json");
+const SIGN_IN_WINDOW = 30 * 60_000;
+
+function beginSignIn() {
+  const state = crypto.randomBytes(24).toString("hex");
+  fs.writeFileSync(stateFile(), JSON.stringify({ state, at: Date.now() }));
+  shell.openExternal(`${ORIGIN}/desktop-auth?state=${state}`);
+}
+
+function handleLink(url) {
+  let link;
+  try {
+    link = new URL(url);
+  } catch {
+    return;
+  }
+  if (link.protocol !== `${PROTOCOL}:` || link.hostname !== "auth") return;
+  let saved = null;
+  try {
+    saved = JSON.parse(fs.readFileSync(stateFile(), "utf8"));
+  } catch {}
+  const token = link.searchParams.get("token_hash");
+  // Only the sign-in this app started, so a link from someone else can't sign it into their account
+  if (!saved || !token || link.searchParams.get("state") !== saved.state || Date.now() - saved.at > SIGN_IN_WINDOW) return;
+  fs.rmSync(stateFile(), { force: true });
+  pendingToken = token;
+  // Before the window exists the web app takes the token when it loads
+  if (!win) return;
+  showWindow();
+  win.webContents.send("auth");
 }
 
 function setOpenAtLogin(openAtLogin) {

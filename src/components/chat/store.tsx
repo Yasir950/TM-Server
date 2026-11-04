@@ -12,7 +12,7 @@ type Unread = Record<string, { unread: number; mentions: number }>;
 // Keyed by thread parent id; only threads the user follows (started, replied to, or mentioned in)
 type ThreadUnread = Record<string, { channelId: string; unread: number; mentions: number }>;
 type Preview = { body: string; user_id: string; created_at: string };
-export type View = "threads" | "saved" | "search" | "reminders" | "meetings" | "admin" | "members" | "company" | null;
+export type View = "threads" | "saved" | "search" | "reminders" | "meetings" | "admin" | "members" | "company" | "platform" | null;
 export type Thread = { id: string; channelId: string };
 // meeting: set when the ring is a scheduled meeting starting, rather than someone calling
 export type Ring = { channelId: string; from: string; title: string; meeting?: string };
@@ -26,6 +26,8 @@ type ChatState = {
   company: Company | null;
   companies: Company[];
   members: Record<string, Member>;
+  // Platform operator: sees every company and is owner of each (supabase/migrations/*_super_admin.sql)
+  superAdmin: boolean;
   switchCompany: (id: string) => Promise<void>;
   // The docked right pane shows one of: a thread, a member's profile, or a channel's details
   // User whose profile is open
@@ -143,6 +145,7 @@ export function ChatProvider({ session, children }: { session: Session; children
   const [company, setCompany] = useState<Company | null>(null);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [members, setMembers] = useState<Record<string, Member>>({});
+  const [superAdmin, setSuperAdmin] = useState(false);
   const [memberCard, setMemberCard] = useState<string | null>(null);
   const [channelDetails, setChannelDetails] = useState<string | null>(null);
   const [allMeetings, setAllMeetings] = useState<Meeting[]>([]);
@@ -169,29 +172,37 @@ export function ChatProvider({ session, children }: { session: Session; children
   }, []);
 
   const reload = useCallback(async () => {
-    const [{ data: profs }, { data: allMems }, { data: counts }, { data: prev }, { data: cos }, { data: dir }] = await Promise.all([
+    const [{ data: profs }, { data: allMems }, { data: counts }, { data: prev }, { data: cos }, { data: dir }, { data: sa }] = await Promise.all([
       supabase.from("profiles").select("*"),
       supabase.from("channel_members").select("*").eq("user_id", uid),
       supabase.rpc("unread_counts"),
       supabase.rpc("channel_previews"),
       supabase.from("companies").select("*").order("name"),
       supabase.rpc("company_directory"),
+      supabase.rpc("is_super_admin"),
       loadThreadUnread(),
     ]);
     const co = (profs ?? []).find((p) => p.id === uid)?.current_company_id ?? null;
-    const [{ data: chans }, { data: dmRows }] = await Promise.all([
-      supabase.from("channels").select("*").eq("company_id", co ?? crypto.randomUUID()).in("id", (allMems ?? []).map((m) => m.channel_id)),
-      supabase.from("channel_members").select("channel_id,user_id").in("channel_id", (allMems ?? []).map((m) => m.channel_id)),
-    ]);
+    // Super admins get every conversation in the company so they can open any of them; the sidebar still lists only their own
+    const chanQuery = supabase.from("channels").select("*").eq("company_id", co ?? crypto.randomUUID());
+    const { data: chans } = await (sa ? chanQuery : chanQuery.in("id", (allMems ?? []).map((m) => m.channel_id)));
+    const { data: dmRows } = await supabase
+      .from("channel_members")
+      .select("channel_id,user_id")
+      .in("channel_id", (chans ?? []).filter((c) => c.kind === "dm").map((c) => c.id));
     // Only the current company's people and conversations are shown
     const inCo = new Set((chans ?? []).map((c) => c.id));
     const mems = (allMems ?? []).filter((m) => inCo.has(m.channel_id));
     const dirMap: Record<string, Member> = Object.fromEntries(((dir ?? []) as Member[]).map((m) => [m.user_id, m]));
+    setSuperAdmin(!!sa);
     setCompanies(cos ?? []);
     setCompany((cos ?? []).find((c) => c.id === co) ?? null);
     setMembers(dirMap);
+    // The database treats super admins as owner of every company
     setProfiles(
-      Object.fromEntries((profs ?? []).filter((p) => p.id === uid || dirMap[p.id]).map((p) => [p.id, { ...p, role: dirMap[p.id]?.role ?? "member" }])),
+      Object.fromEntries(
+        (profs ?? []).filter((p) => p.id === uid || dirMap[p.id]).map((p) => [p.id, { ...p, role: p.id === uid && sa ? "owner" : (dirMap[p.id]?.role ?? "member") }]),
+      ),
     );
     setMemberships(Object.fromEntries(mems.map((m) => [m.channel_id, m])));
     setChannels(Object.fromEntries((chans ?? []).map((c) => [c.id, c])));
@@ -684,6 +695,7 @@ export function ChatProvider({ session, children }: { session: Session; children
             company,
             companies,
             members,
+            superAdmin,
             switchCompany,
             memberCard,
             showMember,
@@ -726,7 +738,7 @@ export function ChatProvider({ session, children }: { session: Session; children
             channelTitle,
           }
         : null,
-    [profiles, company, companies, members, switchCompany, memberCard, showMember, channelDetails, showChannelDetails, openThread, uid, channels, memberships, dmMembers, unread, threadUnread, previews, online, away, activeId, thread, focusId, view, query, huddle, huddles, ring, huddleNotice, ringing, toasts, dismissToast, setHuddle, inviteToHuddle, dismissRing, huddleName, meetings, reloadMeetings, setActive, setView, markRead, markUnread, markThreadRead, updateMembership, reload, channelTitle],
+    [profiles, company, companies, members, superAdmin, switchCompany, memberCard, showMember, channelDetails, showChannelDetails, openThread, uid, channels, memberships, dmMembers, unread, threadUnread, previews, online, away, activeId, thread, focusId, view, query, huddle, huddles, ring, huddleNotice, ringing, toasts, dismissToast, setHuddle, inviteToHuddle, dismissRing, huddleName, meetings, reloadMeetings, setActive, setView, markRead, markUnread, markThreadRead, updateMembership, reload, channelTitle],
   );
 
   if (!loaded || !value) return <AppSkeleton />;

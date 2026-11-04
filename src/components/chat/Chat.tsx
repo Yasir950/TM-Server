@@ -10,6 +10,7 @@ import ThreadPanel from "./ThreadPanel";
 import { BrowseChannels, ChannelDetails, CreateChannel, NewDM } from "./Modals";
 import { QuickSwitcher, RemindersView, SavedView, SearchView, StatusModal, ThreadsView } from "./Views";
 import AdminView from "./Admin";
+import SuperAdminView from "./SuperAdmin";
 import { CompanyLogo, CompanySwitcher, CompanyView, InviteFromUrl, MemberCard, MembersView, Onboarding, ProfileModal } from "./Company";
 import Huddle, { IncomingHuddle } from "./Huddle";
 import { MeetingsView, useNow } from "./Meetings";
@@ -18,7 +19,7 @@ import { APP_NAME, CALL, DESKTOP_MAC_URL, DESKTOP_WIN_URL, RAIL } from "@/lib/br
 import { enablePush, signOut } from "@/lib/push";
 
 export default function Chat() {
-  const { activeId, thread, view, huddle, setHuddle, company, memberCard, members, channels, channelDetails, showChannelDetails } = useChat();
+  const { activeId, thread, view, huddle, setHuddle, company, superAdmin, memberCard, members, channels, channelDetails, showChannelDetails } = useChat();
   const [switcher, setSwitcher] = useState(false);
   const [tab, setTab] = useState<Tab>("home");
 
@@ -33,6 +34,14 @@ export default function Chat() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  // A super admin outside every company lands on the platform overview and opens companies from there
+  if (!company && superAdmin)
+    return (
+      <div className="flex h-full flex-col bg-white pt-[env(safe-area-inset-top)]">
+        <SuperAdminView />
+        <InviteFromUrl />
+      </div>
+    );
   if (!company)
     return (
       <>
@@ -66,7 +75,7 @@ export default function Chat() {
               pane ? "hidden lg:flex" : open ? "flex" : "hidden md:flex"
             }`}
           >
-            {view === "threads" ? <ThreadsView /> : view === "saved" ? <SavedView /> : view === "search" ? <SearchView /> : view === "reminders" ? <RemindersView /> : view === "meetings" ? <MeetingsView /> : view === "admin" ? <AdminView /> : view === "members" ? <MembersView /> : view === "company" ? <CompanyView key={company.id} /> : activeId ? <ChannelView key={activeId} channelId={activeId} /> : <Empty />}
+            {view === "threads" ? <ThreadsView /> : view === "saved" ? <SavedView /> : view === "search" ? <SearchView /> : view === "reminders" ? <RemindersView /> : view === "meetings" ? <MeetingsView /> : view === "admin" ? <AdminView /> : view === "platform" ? <SuperAdminView /> : view === "members" ? <MembersView /> : view === "company" ? <CompanyView key={company.id} /> : activeId ? <ChannelView key={activeId} channelId={activeId} /> : <Empty />}
           </main>
           {pane}
         </div>
@@ -438,7 +447,7 @@ function ActivityList() {
 }
 
 function Sidebar({ tab, className }: { tab: Tab; className: string }) {
-  const { me, channels, memberships, online, away, channelTitle, dmMembers, profiles, previews, view, setView, threadUnread, meetings } = useChat();
+  const { me, superAdmin, channels, memberships, online, away, channelTitle, dmMembers, profiles, previews, view, setView, threadUnread, meetings } = useChat();
   const now = useNow(30_000);
   const liveMeetings = meetings.some((m) => meetingLive(m, now) && m.meeting_invitees.some((i) => i.user_id === me.id && i.response !== "declined"));
   const newThreads = Object.values(threadUnread).filter((t) => !memberships[t.channelId]?.muted);
@@ -506,6 +515,7 @@ function Sidebar({ tab, className }: { tab: Tab; className: string }) {
             />
             <NavButton active={view === "members"} onClick={() => setView("members")} icon="users" label="Members" />
             {isAdmin(me) && <NavButton active={view === "admin"} onClick={() => setView("admin")} icon="wrench" label="Admin" />}
+            {superAdmin && <NavButton active={view === "platform"} onClick={() => setView("platform")} icon="shield" label="Super admin" />}
           </div>
           {notifPerm === "default" && (
             <button

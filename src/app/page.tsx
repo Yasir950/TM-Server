@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { supabase, openedFromRecoveryLink } from "@/lib/supabase";
-import Auth from "@/components/Auth";
+import Auth, { DesktopSignIn } from "@/components/Auth";
 import { ChatProvider } from "@/components/chat/store";
 import Chat from "@/components/chat/Chat";
 
@@ -23,7 +23,8 @@ export default function Home() {
   }, []);
 
   if (session === undefined) return null;
-  if (!session) return <Auth />;
+  // Desktop builds with browser sign-in show only a sign-in button; older ones keep the form
+  if (!session) return window.workchime?.signIn ? <DesktopSignIn /> : <Auth />;
   if (recovering) return <Auth recovery onDone={() => setRecovering(false)} />;
   return (
     <ChatProvider key={session.user.id} session={session}>

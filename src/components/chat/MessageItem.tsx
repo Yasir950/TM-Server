@@ -269,7 +269,7 @@ function CallCard({ duration, people }: { duration: number; people?: string[] })
   const extra = (people?.length ?? 0) - shown.length;
   const names = people?.map((id) => displayName(profiles[id])).join(", ");
   return (
-    <div className="mt-1.5 flex w-[22rem] max-w-full items-center gap-3 rounded-2xl border border-tm-line bg-white p-3 shadow-sm">
+    <div className="mt-1.5 flex w-[22rem] max-w-full items-center gap-3 rounded-2xl border border-tm-line bg-white p-3">
       <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${missed ? "bg-red-50 text-red-500" : "bg-tm-green-light text-tm-green"}`}>
         <Icon name={missed ? "phoneOff" : "phone"} size={18} />
       </span>
