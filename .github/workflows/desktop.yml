@@ -14,6 +14,8 @@ permissions:
 jobs:
   build:
     strategy:
+      # One platform failing shouldn't stop the other from being released
+      fail-fast: false
       matrix:
         include:
           - os: windows-latest
@@ -27,8 +29,8 @@ jobs:
       run:
         working-directory: desktop
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
       - run: npm install
