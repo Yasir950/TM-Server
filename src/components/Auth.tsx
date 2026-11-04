@@ -90,7 +90,7 @@ export default function Auth({ recovery, onDone, redirectTo, signup }: { recover
     if (mode === "reset" && password !== confirm) return setMsg({ error: true, text: "Passwords don't match." });
     setBusy(true);
     if (mode === "forgot") {
-      const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: redirectTo ?? window.location.origin });
+      const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: redirectTo ?? `${window.location.origin}/app` });
       setBusy(false);
       if (error) setMsg({ error: true, text: error.message });
       else setMsg({ text: "If an account exists for that email, a reset link is on its way. Check your inbox." });
@@ -106,7 +106,7 @@ export default function Auth({ recovery, onDone, redirectTo, signup }: { recover
     const { data, error } =
       mode === "signin"
         ? await supabase.auth.signInWithPassword({ email, password })
-        : await supabase.auth.signUp({ email, password, options: { data: { full_name: fullName }, emailRedirectTo: redirectTo ?? window.location.origin } });
+        : await supabase.auth.signUp({ email, password, options: { data: { full_name: fullName }, emailRedirectTo: redirectTo ?? `${window.location.origin}/app` } });
     setBusy(false);
     if (error) setMsg({ error: true, text: error.message });
     else if (mode === "signup" && !data.session) setMsg({ text: "Check your email to confirm your account." });

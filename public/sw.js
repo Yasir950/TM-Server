@@ -8,7 +8,12 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 self.addEventListener("install", () => self.skipWaiting());
 self.addEventListener("activate", (e) => e.waitUntil(self.clients.claim()));
 
-const appWindows = () => self.clients.matchAll({ type: "window", includeUncontrolled: true });
+// The app lives at /app; the rest of the origin is the public site
+const APP = "/app";
+const appWindows = async () =>
+  (await self.clients.matchAll({ type: "window", includeUncontrolled: true })).filter((w) => new URL(w.url).pathname.startsWith(APP));
+// Push payloads from older servers link to /?…
+const toApp = (url) => (url || APP).replace(/^\/(?=\?|$)/, APP);
 
 self.addEventListener("push", (event) => {
   let d;
@@ -32,7 +37,7 @@ self.addEventListener("push", (event) => {
 // Rings until answered or the call's 30 seconds run out, then turns into a missed call
 async function ring(d) {
   const missed = () =>
-    self.registration.showNotification(`Missed call from ${d.caller}`, { body: d.where, tag: d.tag, icon: d.icon || ICON, badge: ICON, data: { url: `/?c=${d.channel}` } });
+    self.registration.showNotification(`Missed call from ${d.caller}`, { body: d.where, tag: d.tag, icon: d.icon || ICON, badge: ICON, data: { url: `${APP}?c=${d.channel}` } });
   if (Date.now() >= d.expires) return missed();
   await self.registration.showNotification(d.title, {
     body: d.body,
@@ -46,7 +51,7 @@ async function ring(d) {
       { action: "answer", title: "Answer" },
       { action: "decline", title: "Decline" },
     ],
-    data: { url: `/?ring=${d.channel}&from=${d.from}&where=${encodeURIComponent(d.where)}`, expires: d.expires },
+    data: { url: `${APP}?ring=${d.channel}&from=${d.from}&where=${encodeURIComponent(d.where)}`, expires: d.expires },
   });
   await sleep(Math.max(0, d.expires - Date.now()));
   const [still] = await self.registration.getNotifications({ tag: d.tag });
@@ -61,7 +66,7 @@ async function cancel(d) {
   const ringing = (await self.registration.getNotifications({ tag: d.tag })).filter((n) => n.data?.expires);
   ringing.forEach((n) => n.close());
   if ((await appWindows()).some((w) => w.focused)) return;
-  await self.registration.showNotification(`Missed call from ${d.caller}`, { body: d.where, tag: d.tag, icon: d.icon || ICON, badge: ICON, data: { url: `/?c=${d.channel}` } });
+  await self.registration.showNotification(`Missed call from ${d.caller}`, { body: d.where, tag: d.tag, icon: d.icon || ICON, badge: ICON, data: { url: `${APP}?c=${d.channel}` } });
 }
 
 self.addEventListener("notificationclick", (event) => {
@@ -69,7 +74,8 @@ self.addEventListener("notificationclick", (event) => {
   n.close();
   if (event.action === "decline") return;
   // A call answered after it stopped ringing just opens the conversation
-  const url = n.data?.expires && Date.now() > n.data.expires ? n.data.url.replace(/^\/\?ring=([^&]+).*/, "/?c=$1") : n.data?.url || "/";
+  const target = toApp(n.data?.url);
+  const url = n.data?.expires && Date.now() > n.data.expires ? target.replace(/^\/app\?ring=([^&]+).*/, `${APP}?c=$1`) : target;
   event.waitUntil(
     (async () => {
       const [win] = await appWindows();

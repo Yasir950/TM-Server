@@ -8,7 +8,8 @@ import Auth, { DesktopSignIn } from "@/components/Auth";
 import { ChatProvider } from "@/components/chat/store";
 import Chat from "@/components/chat/Chat";
 
-// Signed-out visitors who just typed the address in a browser get the public site (app/(site)/home).
+// The app lives at /app; the public site is at / (app/(site)/page.tsx).
+// Signed-out visitors who just typed /app in a browser get the public site.
 // Anything with a query or hash (sign-in/sign-up buttons, invites, message links, email callbacks),
 // the desktop app and the installed home-screen app go straight to sign-in.
 const showPublicSite = () =>
@@ -32,8 +33,19 @@ export default function Home() {
 
   const toSite = session === null && !recovering && showPublicSite();
   useEffect(() => {
-    if (toSite) router.replace("/home");
+    if (toSite) router.replace("/");
   }, [toSite, router]);
+
+  // The ?signin / ?signup flags only pick the auth screen; drop them once signed in
+  const signedIn = !!session;
+  useEffect(() => {
+    if (!signedIn) return;
+    const url = new URL(window.location.href);
+    if (!url.searchParams.has("signin") && !url.searchParams.has("signup")) return;
+    url.searchParams.delete("signin");
+    url.searchParams.delete("signup");
+    window.history.replaceState(window.history.state, "", url.pathname + url.search + url.hash);
+  }, [signedIn]);
 
   if (session === undefined || toSite) return null;
   // Desktop builds with browser sign-in show only a sign-in button; older ones keep the form

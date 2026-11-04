@@ -16,6 +16,9 @@ export async function POST(req: NextRequest) {
   };
   if (!subscriptions?.length || !payload) return Response.json({ sent: 0 });
 
+  // The database builds app links as /?…; the app lives at /app
+  if (typeof payload.url === "string") payload.url = payload.url.replace(/^\/(?=\?|$)/, "/app");
+
   // Message bodies arrive as raw mrkdwn; send the same one-line preview the app shows
   if (payload.kind === "message") {
     payload.body = plainText(payload.body ?? "").slice(0, 140) || (payload.attachments ? "Sent an attachment" : "");

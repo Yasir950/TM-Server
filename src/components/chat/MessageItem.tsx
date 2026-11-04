@@ -74,7 +74,7 @@ export default function MessageItem({ msg, reactions, grouped, inThread, highlig
 
   function copyLink() {
     const target = msg.parent_id && !msg.also_in_channel ? msg.parent_id : msg.id;
-    navigator.clipboard.writeText(`${location.origin}/?c=${msg.channel_id}&m=${target}`);
+    navigator.clipboard.writeText(`${location.origin}/app?c=${msg.channel_id}&m=${target}`);
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
     setMenu(false);

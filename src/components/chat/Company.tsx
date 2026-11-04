@@ -10,7 +10,7 @@ import { Icon } from "../icons";
 import { CALL } from "@/lib/brand";
 
 const INVITE_KEY = "tm-invite";
-export const inviteUrl = (token: string) => `${window.location.origin}/?invite=${token}`;
+export const inviteUrl = (token: string) => `${window.location.origin}/app?invite=${token}`;
 const roleLabel: Record<Role, string> = { owner: "Owner", admin: "Admin", member: "Member", guest: "Guest" };
 const roleTag: Record<Role, string> = {
   owner: "bg-tm-blue text-white",
@@ -214,7 +214,7 @@ export function InviteFromUrl() {
   }, [token]);
 
   if (!token || !info) return null;
-  const close = () => (clearInvite(), setToken(null), window.history.replaceState(null, "", "/"));
+  const close = () => (clearInvite(), setToken(null), window.history.replaceState(null, "", "/app"));
   return (
     <Modal title="Company invitation" onClose={close}>
       <div className="space-y-4">
@@ -602,7 +602,7 @@ export function ProfileModal({ onClose }: { onClose: () => void }) {
     const results = await Promise.all([
       supabase.from("profiles").update({ full_name: fullName.trim(), username: username.trim().toLowerCase() }).eq("id", me.id),
       supabase.from("company_members").update({ designation: designation.trim(), phone: phone.replace(/[\s()-]/g, ""), phone_visible: phoneVisible }).eq("company_id", me.current_company_id).eq("user_id", me.id),
-      email.trim() && email.trim() !== mine?.email ? supabase.auth.updateUser({ email: email.trim() }, { emailRedirectTo: window.location.origin }) : Promise.resolve({ error: null }),
+      email.trim() && email.trim() !== mine?.email ? supabase.auth.updateUser({ email: email.trim() }, { emailRedirectTo: `${window.location.origin}/app` }) : Promise.resolve({ error: null }),
     ]);
     const err = results.find((r) => r.error)?.error;
     if (err) return setNotice(err.message);

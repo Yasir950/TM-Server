@@ -46,7 +46,7 @@ export default function DesktopAuth() {
     return (
       <Shell title={`Sign in to the ${APP_NAME} desktop app`}>
         <p className="text-sm text-zinc-500">Open the desktop app and click “Sign in with your browser” to start.</p>
-        <Link href="/" className={`${btn} mt-6 inline-block`}>Go to {APP_NAME}</Link>
+        <Link href="/app" className={`${btn} mt-6 inline-block`}>Go to {APP_NAME}</Link>
       </Shell>
     );
   // Email confirmation and password reset links come back to this page, keeping the desktop sign-in going

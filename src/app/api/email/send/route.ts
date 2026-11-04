@@ -29,7 +29,8 @@ const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1).replace(/_/g, 
 const due = (d: string) => new Date(`${d}T00:00:00Z`).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
 
 function taskAssigned(d: TaskAssigned) {
-  const url = `${d.app_url}${d.path}`;
+  // The database builds app links as /?…; the app lives at /app
+  const url = `${d.app_url}${d.path.replace(/^\/(?=\?|$)/, "/app")}`;
   const subject = `${d.actor} assigned you ${d.key}: ${d.title}`;
   const rows: [string, string][] = [
     ["Project", d.company ? `${d.project} · ${d.company}` : d.project],

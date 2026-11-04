@@ -1015,7 +1015,7 @@ export function TaskDialog() {
     else close();
   };
   const copyLink = () => {
-    navigator.clipboard.writeText(`${location.origin}/?task=${task.id}`);
+    navigator.clipboard.writeText(`${location.origin}/app?task=${task.id}`);
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
   };

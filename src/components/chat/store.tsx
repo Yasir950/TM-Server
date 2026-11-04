@@ -379,7 +379,7 @@ export function ChatProvider({ session, children }: { session: Session; children
     reload().then(() => {
       // A link wins over the last opened conversation
       const params = new URLSearchParams(location.search);
-      if (params.has("c") || params.has("ring") || params.has("task")) history.replaceState(null, "", "/");
+      if (params.has("c") || params.has("ring") || params.has("task")) history.replaceState(null, "", "/app");
       if (!openLink(params)) setActiveId((cur) => cur ?? localStorage.getItem("tm:active"));
     });
   }, [reload, openLink]);

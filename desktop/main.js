@@ -5,7 +5,7 @@ const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
 
-const APP_URL = process.env.WORKCHIME_URL || "https://workchime.vercel.app/";
+const APP_URL = process.env.WORKCHIME_URL || "https://workchime.vercel.app/app";
 const ORIGIN = new URL(APP_URL).origin;
 // Sign-in links from the website: workchime://auth?state=…&token_hash=…
 const PROTOCOL = "workchime";

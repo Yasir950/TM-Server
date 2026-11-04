@@ -7,7 +7,7 @@ export default function manifest(): MetadataRoute.Manifest {
     name: APP_NAME,
     short_name: APP_NAME,
     description: `${APP_NAME} team messaging`,
-    start_url: "/",
+    start_url: "/app",
     display: "standalone",
     background_color: RAIL,
     theme_color: RAIL,

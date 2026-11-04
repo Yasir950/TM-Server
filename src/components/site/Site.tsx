@@ -5,8 +5,8 @@ import { Icon, type IconName } from "@/components/icons";
 // Public website chrome (app/(site)): server components only, so the marketing pages ship no app code
 
 // Sign-in and sign-up live in the app at "/"; these params open the form instead of bouncing back here
-export const SIGN_IN = "/?signin";
-export const SIGN_UP = "/?signup";
+export const SIGN_IN = "/app?signin";
+export const SIGN_UP = "/app?signup";
 
 export const NAVY = "#0f2d4d";
 
@@ -17,7 +17,7 @@ export function Mark({ size = 32, className = "" }: { size?: number; className?:
 
 export function Wordmark({ light }: { light?: boolean }) {
   return (
-    <Link href="/home" className="inline-flex items-center gap-2.5" aria-label={`${APP_NAME} home`}>
+    <Link href="/" className="inline-flex items-center gap-2.5" aria-label={`${APP_NAME} home`}>
       <Mark size={32} className="shadow-sm" />
       <span className={`text-xl font-semibold tracking-[-0.02em] ${light ? "text-white" : "text-zinc-900"}`}>{APP_NAME}</span>
     </Link>

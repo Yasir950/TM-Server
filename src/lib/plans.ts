@@ -24,7 +24,7 @@ export const tiers: Tier[] = [
     per: "forever",
     blurb: "For small teams trying out a better way to work together.",
     cta: "Get started",
-    href: "/?signup",
+    href: "/app?signup",
     highlights: [
       "Up to 10 members",
       "90 days of message history",
@@ -41,7 +41,7 @@ export const tiers: Tier[] = [
     per: "per company / month",
     blurb: "For growing teams that need unlimited history, bigger calls and admin controls.",
     cta: "Start on Pro",
-    href: "/?signup",
+    href: "/app?signup",
     highlights: [
       "Up to 250 members",
       "Unlimited message history",
