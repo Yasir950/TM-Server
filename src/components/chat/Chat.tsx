@@ -305,6 +305,12 @@ function Rail({ tab, onTab, className }: { tab: Tab; onTab: (t: Tab) => void; cl
   mentions += Object.values(threadUnread).reduce((n, t) => n + (memberships[t.channelId]?.muted ? 0 : t.mentions), 0);
   mentions += notifications.filter((n) => !n.read_at).length;
 
+  // Desktop app taskbar/dock badge, like Slack: DMs and mentions as a number, a dot for other unread channels.
+  // The rail stays mounted (hidden by CSS on phones), so this tracks every change; it clears on sign-out or company loss.
+  const badgeCount = dmUnread + mentions;
+  useEffect(() => window.workchime?.badge?.(badgeCount, homeUnread), [badgeCount, homeUnread]);
+  useEffect(() => () => window.workchime?.badge?.(0, false), []);
+
   return (
     // Bottom tab bar on phones, left rail from md up
     <nav

@@ -312,7 +312,7 @@ function ReplyLink({ msg, onOpen }: { msg: Message; onOpen: () => void }) {
   const fresh = useChat().threadUnread[msg.id]?.unread;
   return (
     // Hangs off the message on an elbow connector, indented, so it reads as replies to it rather than a new line of chat
-    <div className="flex items-start pl-1">
+    <div className="mt-1.5 flex items-start pl-1">
       <span className="mr-1.5 h-3 w-3 shrink-0 rounded-bl-md border-b-2 border-l-2 border-zinc-200" />
       <button
         onClick={onOpen}

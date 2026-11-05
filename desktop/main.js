@@ -79,6 +79,7 @@ async function start() {
     win.flashFrame(true);
   });
   ipcMain.on("sign-in", (e) => fromApp(e) && beginSignIn());
+  ipcMain.on("badge", (e, b) => fromApp(e) && setBadge(b));
   ipcMain.handle("take-auth", (e) => {
     if (!fromApp(e)) return null;
     const token = pendingToken;
@@ -133,6 +134,28 @@ function handleLink(url) {
   win.webContents.send("auth");
 }
 
+// Unread badge from the web app (preload.js badge): kept so it can be reapplied when the window comes back from the tray
+let badge = { count: 0, dot: false, icon: null };
+
+function setBadge(b) {
+  const count = Number.isInteger(b?.count) && b.count > 0 ? Math.min(b.count, 9999) : 0;
+  const dot = !count && b?.dot === true;
+  const icon = typeof b?.icon === "string" && b.icon.startsWith("data:image/png;base64,") && b.icon.length < 100_000 ? b.icon : null;
+  badge = { count, dot, icon };
+  applyBadge();
+}
+
+function applyBadge() {
+  const { count, dot, icon } = badge;
+  const label = count ? `${count} unread` : dot ? "New messages" : "";
+  if (process.platform === "darwin") app.dock?.setBadge(count ? (count > 99 ? "99+" : String(count)) : dot ? "•" : "");
+  // Linux: launchers that support it (Unity, KDE); a dot has no equivalent
+  else if (process.platform === "linux") app.setBadgeCount(count);
+  // Windows: an overlay on the taskbar button, which exists only while the window is shown
+  else if (win && !win.isDestroyed()) win.setOverlayIcon(icon && (count || dot) ? nativeImage.createFromDataURL(icon) : null, label);
+  tray?.setToolTip(label ? `Workchime (${label})` : "Workchime");
+}
+
 function setOpenAtLogin(openAtLogin) {
   app.setLoginItemSettings({ openAtLogin, openAsHidden: true, args: ["--hidden"] });
 }
@@ -177,6 +200,8 @@ function createWindow() {
     win.hide();
   });
   win.on("focus", () => win.flashFrame(false));
+  // Hiding to the tray removes the taskbar button, and its overlay with it
+  win.on("show", applyBadge);
   win.on("closed", () => (win = null));
 }
 

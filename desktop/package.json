@@ -1,7 +1,7 @@
 {
   "name": "workchime-desktop",
   "productName": "Workchime",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Workchime desktop app",
   "main": "main.js",
   "author": "Workchime",

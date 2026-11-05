@@ -11,6 +11,8 @@ declare global {
       signIn?: () => void;
       takeAuth?: () => Promise<string | null>;
       onAuth?: (cb: () => void) => () => void;
+      // Taskbar/dock unread badge (components/chat/Chat.tsx Rail); absent in desktop builds before 1.2.0
+      badge?: (count: number, dot: boolean) => void;
     };
   }
 }
