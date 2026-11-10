@@ -12,7 +12,7 @@ import { QuickSwitcher, RemindersView, SavedView, SearchView, StatusModal, Threa
 import AdminView from "./Admin";
 import SuperAdminView from "./SuperAdmin";
 import { CompanyLogo, CompanySwitcher, CompanyView, InviteFromUrl, MemberCard, MembersView, Onboarding, ProfileModal } from "./Company";
-import Huddle, { IncomingHuddle } from "./Huddle";
+import Huddle, { HuddleElsewhere, IncomingHuddle } from "./Huddle";
 import { MeetingsView, useNow } from "./Meetings";
 import { MyTasksView, ProjectsView, SidebarProjects, TaskDialog } from "./Projects";
 import { Icon, type IconName } from "../icons";
@@ -84,6 +84,7 @@ export default function Chat() {
       {switcher && <QuickSwitcher onClose={() => setSwitcher(false)} />}
       {taskId && <TaskDialog key={taskId} />}
       {huddle && <Huddle key={huddle} channelId={huddle} onLeave={() => setHuddle(null)} />}
+      <HuddleElsewhere />
       <IncomingHuddle />
       <InviteFromUrl />
       <Toasts />

@@ -52,6 +52,13 @@ type ChatState = {
   view: View;
   query: string;
   huddle: string | null;
+  // Set when this tab rejoined its call after a reload, with the state it had
+  huddleResume: HuddleResume | null;
+  // A call this user is in from another tab of this browser; only one tab holds the connection
+  huddleElsewhere: string | null;
+  // Moves the call from the other tab into this one, or hangs it up there
+  takeHuddleHere: () => void;
+  leaveHuddleElsewhere: () => void;
   // Channel id → ids of the people currently in its huddle, across the workspace
   huddles: Record<string, string[]>;
   ring: Ring | null;
@@ -95,6 +102,35 @@ export const useChat = () => useContext(Ctx)!;
 
 // Workspace-wide room for huddle presence and rings, opened by ChatProvider
 const huddleChannel = () => supabase.getChannels().find((c) => c.topic === "realtime:huddles");
+
+// A reload keeps the call: Huddle saves it when the page goes away and the reloaded tab rejoins it.
+// Read once per page load, so a later remount of ChatProvider doesn't rejoin again.
+export type HuddleResume = { channelId: string; muted: boolean };
+export const RESUME_KEY = "tm:huddle-resume";
+const RESUME_WINDOW = 60_000;
+let pendingResume: HuddleResume | null = (() => {
+  if (typeof window === "undefined") return null;
+  try {
+    const r = JSON.parse(sessionStorage.getItem(RESUME_KEY) ?? "null");
+    sessionStorage.removeItem(RESUME_KEY);
+    if (r && typeof r.channelId === "string" && typeof r.at === "number" && Date.now() - r.at < RESUME_WINDOW) return { channelId: r.channelId, muted: !!r.muted };
+  } catch {}
+  return null;
+})();
+
+// One call per browser. Tabs of the same user talk over a BroadcastChannel: the tab that joins a call
+// announces it, and every other tab stops ringing for it and drops any call of its own.
+const TAB = Math.random().toString(36).slice(2);
+type TabMessage =
+  | { type: "hello" }
+  | { type: "joined"; tab: string; channelId: string }
+  | { type: "left"; tab: string }
+  | { type: "leave"; tab: string }
+  | { type: "dismiss"; channelId: string };
+let tabChannel: BroadcastChannel | null = null;
+const toTabs = (m: TabMessage) => tabChannel?.postMessage(m);
+// Set while this tab hands its call to another tab, so leaving it doesn't log the call as ended
+export const huddleHandoff = { current: false };
 
 // True the first time it is called for a key in this browser, so reloads and other tabs don't repeat a ring
 function once(key: string) {
@@ -145,7 +181,13 @@ export function ChatProvider({ session, children }: { session: Session; children
   const [focusId, setFocusId] = useState<string | null>(null);
   const [view, setViewState] = useState<View>(null);
   const [query, setQuery] = useState("");
-  const [huddle, setHuddleState] = useState<string | null>(null);
+  const [huddleResume, setHuddleResume] = useState<HuddleResume | null>(() => pendingResume);
+  const [huddle, setHuddleState] = useState<string | null>(() => pendingResume?.channelId ?? null);
+  useEffect(() => {
+    pendingResume = null;
+  }, []);
+  // The call another tab of this browser holds: { tab, channelId }
+  const [elsewhere, setElsewhere] = useState<{ tab: string; channelId: string } | null>(null);
   const [huddles, setHuddles] = useState<Record<string, string[]>>({});
   const [ring, setRing] = useState<Ring | null>(null);
   // The browser notification shown for the current ring, closed when the ring ends
@@ -174,10 +216,10 @@ export function ChatProvider({ session, children }: { session: Session; children
   const [heldRead, setHeldRead] = useState<string | null>(null);
 
   // Realtime callbacks read the latest state through this ref
-  const live = useRef({ activeId, memberships, channels, profiles, thread, threadUnread, dmMembers, huddle, huddles, huddleTitles, ring });
+  const live = useRef({ activeId, memberships, channels, profiles, thread, threadUnread, dmMembers, huddle, huddles, huddleTitles, ring, elsewhere });
   useEffect(() => {
-    live.current = { activeId, memberships, channels, profiles, thread, threadUnread, dmMembers, huddle, huddles, huddleTitles, ring };
-  }, [activeId, memberships, channels, profiles, thread, threadUnread, dmMembers, huddle, huddles, huddleTitles, ring]);
+    live.current = { activeId, memberships, channels, profiles, thread, threadUnread, dmMembers, huddle, huddles, huddleTitles, ring, elsewhere };
+  }, [activeId, memberships, channels, profiles, thread, threadUnread, dmMembers, huddle, huddles, huddleTitles, ring, elsewhere]);
 
   const loadThreadUnread = useCallback(async () => {
     const { data } = await supabase.rpc("thread_unreads");
@@ -504,7 +546,7 @@ export function ChatProvider({ session, children }: { session: Session; children
       .on("broadcast", { event: "ring" }, ({ payload }) => {
         const r = payload as Ring & { to: string[] };
         const { huddle, profiles } = live.current;
-        if (!r.to.includes(uid) || huddle === r.channelId) return;
+        if (!r.to.includes(uid) || huddle === r.channelId || live.current.elsewhere?.channelId === r.channelId) return;
         setHuddleTitles((t) => ({ ...t, [r.channelId]: r.title }));
         setRing({ channelId: r.channelId, from: r.from, title: r.title });
         if (inDnd(profiles[uid])) return;
@@ -548,6 +590,47 @@ export function ChatProvider({ session, children }: { session: Session; children
     const ch = huddleChannel();
     if (huddle) ch?.track({ channel: huddle });
     else ch?.untrack();
+  }, [huddle]);
+
+  // Leaving from a message sent by another tab goes through the full setHuddle (ring cancel and all)
+  const setHuddleRef = useRef<(channelId: string | null) => void>(() => {});
+
+  // Cross-tab coordination: one call per browser (see TabMessage)
+  useEffect(() => {
+    if (typeof BroadcastChannel === "undefined") return;
+    const bc = new BroadcastChannel(`tm:call:${uid}`);
+    tabChannel = bc;
+    bc.onmessage = ({ data }: MessageEvent<TabMessage>) => {
+      const { huddle } = live.current;
+      if (data.type === "hello") {
+        if (huddle) bc.postMessage({ type: "joined", tab: TAB, channelId: huddle } satisfies TabMessage);
+      } else if (data.type === "joined") {
+        setElsewhere({ tab: data.tab, channelId: data.channelId });
+        setRing((r) => (r?.channelId === data.channelId ? null : r));
+        if (huddle === data.channelId) {
+          // The same call moved to that tab: hand it over quietly
+          huddleHandoff.current = true;
+          setHuddleState(null);
+          setRung({});
+        } else if (huddle) setHuddleRef.current(null);
+      } else if (data.type === "left") setElsewhere((e) => (e?.tab === data.tab ? null : e));
+      else if (data.type === "leave") {
+        if (data.tab === TAB && huddle) setHuddleRef.current(null);
+      } else if (data.type === "dismiss") setRing((r) => (r?.channelId === data.channelId ? null : r));
+    };
+    bc.postMessage({ type: "hello" } satisfies TabMessage);
+    // Closing or reloading the tab ends its share of the call; a reloaded tab announces itself again
+    const bye = () => live.current.huddle && bc.postMessage({ type: "left", tab: TAB } satisfies TabMessage);
+    window.addEventListener("pagehide", bye);
+    return () => {
+      window.removeEventListener("pagehide", bye);
+      bc.close();
+      if (tabChannel === bc) tabChannel = null;
+    };
+  }, [uid]);
+
+  useEffect(() => {
+    toTabs(huddle ? { type: "joined", tab: TAB, channelId: huddle } : { type: "left", tab: TAB });
   }, [huddle]);
 
   // The system notification for a call goes away with the call, however it stopped ringing
@@ -682,7 +765,7 @@ export function ChatProvider({ session, children }: { session: Session; children
           if (canNotify) new Notification(`${m.title} starts at ${timeOf(m.starts_at)}`, { icon: "/asset/AppIcon.svg", body: `You'll be called in when it starts`, tag: `meeting-soon:${m.id}` });
         }
         if (now >= start && now < Math.min(meetingEnd(m), start + RING_WINDOW) && once(`ring:${m.id}`)) {
-          if (huddle === m.channel_id) continue;
+          if (huddle === m.channel_id || live.current.elsewhere?.channelId === m.channel_id) continue;
           const where = m.channels?.kind === "dm" ? m.title : `#${m.channels?.name}`;
           setHuddleTitles((t) => ({ ...t, [m.channel_id]: where }));
           setRing({ channelId: m.channel_id, from: m.created_by, title: m.title, meeting: m.id });
@@ -723,7 +806,7 @@ export function ChatProvider({ session, children }: { session: Session; children
       // Hanging up before anyone answered stops the ringing on their end
       // Calls are capped by the plan (Free: 1:1); joining a full call is refused here
       const cap = plan?.max_call_participants;
-      if (channelId && channelId !== huddle && cap && (huddles[channelId]?.length ?? 0) >= cap) {
+      if (channelId && channelId !== huddle && cap && !(huddles[channelId] ?? []).includes(uid) && (huddles[channelId]?.length ?? 0) >= cap) {
         window.alert(`This call is full. The ${plan?.name} plan allows up to ${cap} people in a call${plan?.id === "free" ? "; upgrade to Pro for group calls" : ""}.`);
         return;
       }
@@ -733,6 +816,8 @@ export function ChatProvider({ session, children }: { session: Session; children
         supabase.rpc("push_cancel_ring", { p_channel: huddle, p_to: ringingNow }).then();
       }
       setHuddleState(channelId);
+      setHuddleResume(null);
+      if (channelId) setElsewhere(null);
       setHuddleNotice(null);
       setRung({});
       setRing((r) => (r?.channelId === channelId ? null : r));
@@ -750,6 +835,18 @@ export function ChatProvider({ session, children }: { session: Session; children
     [uid, huddle, rung, channels, dmMembers, huddles, meetings, ringHuddle, plan],
   );
 
+  useEffect(() => {
+    setHuddleRef.current = setHuddle;
+  }, [setHuddle]);
+
+  const takeHuddleHere = useCallback(() => {
+    if (elsewhere) setHuddle(elsewhere.channelId);
+  }, [elsewhere, setHuddle]);
+
+  const leaveHuddleElsewhere = useCallback(() => {
+    if (elsewhere) toTabs({ type: "leave", tab: elsewhere.tab });
+  }, [elsewhere]);
+
   const inviteToHuddle = useCallback((userIds: string[]) => {
     if (huddle) ringHuddle(huddle, userIds);
   }, [huddle, ringHuddle]);
@@ -757,6 +854,8 @@ export function ChatProvider({ session, children }: { session: Session; children
   const dismissRing = useCallback(
     (decline = false) => {
       if (decline && ring && ring.from !== uid) huddleChannel()?.send({ type: "broadcast", event: "decline", payload: { to: ring.from, from: uid, channelId: ring.channelId } });
+      // Declining in one tab stops the ringing in the others
+      if (decline && ring) toTabs({ type: "dismiss", channelId: ring.channelId });
       setRing(null);
     },
     [uid, ring],
@@ -834,6 +933,10 @@ export function ChatProvider({ session, children }: { session: Session; children
             view,
             query,
             huddle,
+            huddleResume,
+            huddleElsewhere: elsewhere?.channelId ?? null,
+            takeHuddleHere,
+            leaveHuddleElsewhere,
             huddles,
             ring,
             huddleNotice,
@@ -865,7 +968,7 @@ export function ChatProvider({ session, children }: { session: Session; children
             channelTitle,
           }
         : null,
-    [profiles, company, plan, companies, members, superAdmin, switchCompany, memberCard, showMember, channelDetails, showChannelDetails, openThread, uid, channels, memberships, dmMembers, unread, threadUnread, previews, online, away, activeId, thread, focusId, view, query, huddle, huddles, ring, huddleNotice, ringing, toasts, dismissToast, setHuddle, inviteToHuddle, dismissRing, huddleName, meetings, reloadMeetings, projects, reloadProjects, projectId, openProject, taskId, notifications, markNotificationsRead, setActive, setView, markRead, markUnread, markThreadRead, updateMembership, reload, channelTitle],
+    [profiles, company, plan, companies, members, superAdmin, switchCompany, memberCard, showMember, channelDetails, showChannelDetails, openThread, uid, channels, memberships, dmMembers, unread, threadUnread, previews, online, away, activeId, thread, focusId, view, query, huddle, huddleResume, elsewhere, takeHuddleHere, leaveHuddleElsewhere, huddles, ring, huddleNotice, ringing, toasts, dismissToast, setHuddle, inviteToHuddle, dismissRing, huddleName, meetings, reloadMeetings, projects, reloadProjects, projectId, openProject, taskId, notifications, markNotificationsRead, setActive, setView, markRead, markUnread, markThreadRead, updateMembership, reload, channelTitle],
   );
 
   if (!loaded || !value) return <AppSkeleton />;

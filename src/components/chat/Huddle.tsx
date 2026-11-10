@@ -1,13 +1,49 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import { supabase, displayName, inDnd, type Profile } from "@/lib/supabase";
 import { CALL, call } from "@/lib/brand";
 import { callLength } from "@/lib/format";
 import { Avatar, Modal, input } from "../ui";
 import { Icon } from "../icons";
-import { useChat, type Ring } from "./store";
+import { useChat, huddleHandoff, RESUME_KEY, type Ring } from "./store";
+
+// The call can leave the browser window for its own one, which can go to another screen.
+// Document Picture-in-Picture gives an always-on-top window (Chrome, Edge); elsewhere a plain popup.
+type PipApi = { requestWindow: (o: { width: number; height: number }) => Promise<Window> };
+const POPUP = { width: 440, height: 240 };
+
+async function openCallWindow(): Promise<Window | null> {
+  const pip = (window as unknown as { documentPictureInPicture?: PipApi }).documentPictureInPicture;
+  if (pip) {
+    try {
+      return await pip.requestWindow(POPUP);
+    } catch {}
+  }
+  return window.open("", "tm-call", `popup,width=${POPUP.width},height=${POPUP.height}`);
+}
+
+// The new window starts blank: give it this page's stylesheets and root classes (fonts, theme)
+function dressCallWindow(w: Window, title: string) {
+  const d = w.document;
+  d.title = title;
+  d.head.replaceChildren();
+  d.body.replaceChildren();
+  for (const el of document.querySelectorAll<HTMLElement>('link[rel="stylesheet"], style')) {
+    if (el instanceof HTMLLinkElement) {
+      const link = d.createElement("link");
+      link.rel = "stylesheet";
+      link.href = el.href;
+      d.head.append(link);
+    } else d.head.append(el.cloneNode(true));
+  }
+  d.documentElement.className = document.documentElement.className;
+  d.documentElement.style.cssText = `${document.documentElement.style.cssText};height:100%`;
+  d.body.className = document.body.className;
+  d.body.style.cssText = "margin:0;height:100%;overflow:hidden";
+}
 
 // Mesh WebRTC: every participant connects to every other; Supabase Realtime carries the signaling.
 // People behind strict NATs or firewalls can only connect through a TURN relay: /api/turn hands out
@@ -216,10 +252,14 @@ function Btn({ dark, on, danger, disabled, title, onClick, children }: { dark?: 
 }
 
 export default function Huddle({ channelId, onLeave }: { channelId: string; onLeave: () => void }) {
-  const { me, profiles, channels, huddleName, huddleNotice } = useChat();
+  const { me, profiles, channels, huddleName, huddleNotice, huddleResume } = useChat();
+  // Rejoining after a reload: keep the mute, and don't play ringback as if calling anew
+  const [resumed] = useState(() => (huddleResume?.channelId === channelId ? huddleResume : null));
   const [present, setPresent] = useState<Record<string, State>>({});
   const [remotes, setRemotes] = useState<Record<string, MediaStream[]>>({});
-  const [mine, setMine] = useState<State>({ muted: false, sharing: false, camera: false, hand: false });
+  const [mine, setMine] = useState<State>({ muted: !!resumed?.muted, sharing: false, camera: false, hand: false });
+  // The separate call window, while the call is popped out of the app
+  const [popout, setPopout] = useState<Window | null>(null);
   const [reactions, setReactions] = useState<Record<string, Reaction>>({});
   const [picking, setPicking] = useState(false);
   const picker = useRef<HTMLDivElement>(null);
@@ -336,6 +376,7 @@ export default function Huddle({ channelId, onLeave }: { channelId: string; onLe
         const mic = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
         if (closed) return mic.getTracks().forEach((t) => t.stop());
         sending[MIC] = mic.getAudioTracks()[0];
+        sending[MIC].enabled = !state.current.muted;
         setLocal((l) => [mic, l[SCREEN], l[CAMERA]]);
       } catch {
         setError("Microphone unavailable. You can still listen and share your screen.");
@@ -391,10 +432,22 @@ export default function Huddle({ channelId, onLeave }: { channelId: string; onLe
         });
     })();
 
+    // A reload rejoins the call (see RESUME_KEY in store); tab close leaves it for good after the window
+    const save = () => {
+      try {
+        sessionStorage.setItem(RESUME_KEY, JSON.stringify({ channelId, muted: state.current.muted, at: Date.now() }));
+      } catch {}
+    };
+    window.addEventListener("pagehide", save);
+
     return () => {
       closed = true;
+      window.removeEventListener("pagehide", save);
+      // Handing the call to another tab of this browser isn't the call ending
+      const handoff = huddleHandoff.current;
+      huddleHandoff.current = false;
       // The last one out logs the call, whether or not anyone picked up
-      if (joined && Object.keys(ch.presenceState()).every((k) => k === self)) logCall(channelId, me.id, (Date.now() - start) / 1000, [...attended]);
+      if (!handoff && joined && Object.keys(ch.presenceState()).every((k) => k === self)) logCall(channelId, me.id, (Date.now() - start) / 1000, [...attended]);
       conns.forEach((p) => p.pc.close());
       conns.clear();
       sending.forEach((t) => t?.stop());
@@ -405,7 +458,7 @@ export default function Huddle({ channelId, onLeave }: { channelId: string; onLe
   }, [channelId, me.id]);
 
   // Calling the conversation: ringback until someone picks up, for up to 30 seconds
-  const calling = !!channels[channelId] && Object.keys(present).length === 0 && !unanswered;
+  const calling = !!channels[channelId] && Object.keys(present).length === 0 && !unanswered && !resumed;
   useEffect(() => {
     if (!calling) return;
     ringback();
@@ -456,6 +509,36 @@ export default function Huddle({ channelId, onLeave }: { channelId: string; onLe
     setPos(null);
     try {
       localStorage.removeItem("tm:huddle-pos");
+    } catch {}
+  };
+
+  // Moves the call into its own window, which can be dragged to another screen; again brings it back
+  const popOut = async () => {
+    if (popout) return popout.close();
+    const w = await openCallWindow();
+    if (!w) return setError("Allow pop-ups for this site to move the call into its own window.");
+    dressCallWindow(w, `${CALL} · ${huddleName(channelId)}`);
+    setPopout(w);
+  };
+
+  // However the window closes (its close button, popping back in, the call ending), the call comes back
+  useEffect(() => {
+    if (!popout) return;
+    const back = () => setPopout(null);
+    popout.addEventListener("pagehide", back);
+    const t = setInterval(() => popout.closed && back(), 500);
+    return () => {
+      clearInterval(t);
+      popout.removeEventListener("pagehide", back);
+      popout.close();
+    };
+  }, [popout]);
+
+  const toggleExpanded = () => {
+    const next = !expanded;
+    setExpanded(next);
+    try {
+      popout?.resizeTo(next ? 960 : POPUP.width, next ? 620 : POPUP.height);
     } catch {}
   };
 
@@ -528,7 +611,7 @@ export default function Huddle({ channelId, onLeave }: { channelId: string; onLe
   const cols = people.length === 1 ? 1 : people.length <= 4 ? 2 : 3;
 
   const controls = (dark: boolean) => (
-    <div className="flex items-center gap-1.5">
+    <div className="flex flex-wrap items-center gap-1.5">
       <Btn dark={dark} on={mine.muted} disabled={!local[MIC]} onClick={toggleMute} title={mine.muted ? "Unmute" : "Mute"}>
         <Icon name={mine.muted ? "micOff" : "mic"} />
       </Btn>
@@ -558,8 +641,11 @@ export default function Huddle({ channelId, onLeave }: { channelId: string; onLe
       <Btn dark={dark} onClick={() => setInviting(true)} title="Add people">
         <Icon name="userPlus" />
       </Btn>
-      <Btn dark={dark} onClick={() => setExpanded(!expanded)} title={expanded ? "Minimize" : "Expand"}>
+      <Btn dark={dark} onClick={toggleExpanded} title={expanded ? "Minimize" : "Expand"}>
         <Icon name={expanded ? "minimize" : "maximize"} />
+      </Btn>
+      <Btn dark={dark} on={!!popout} onClick={popOut} title={popout ? "Back into the app" : "Pop out into its own window"}>
+        <Icon name={popout ? "popIn" : "popOut"} />
       </Btn>
       <Btn danger onClick={onLeave} title={`Leave ${call}`}>
         <Icon name="phoneOff" size={16} />
@@ -568,10 +654,9 @@ export default function Huddle({ channelId, onLeave }: { channelId: string; onLe
     </div>
   );
 
-  return (
+  // In its own window the call fills the window; in the app it floats over it
+  const view = (
     <>
-      {Object.entries(remotes).map(([k, s]) => s[MIC] && <Sound key={k} stream={s[MIC]} />)}
-
       {expanded ? (
         <div className="tm-fade fixed inset-0 z-50 flex flex-col gap-3 bg-slate-950 p-4 text-white">
           <div className="flex items-center gap-2">
@@ -629,17 +714,21 @@ export default function Huddle({ channelId, onLeave }: { channelId: string; onLe
         </div>
       ) : (
         <div
-          ref={box}
-          className={`tm-pop tm-float fixed z-40 w-[26rem] max-w-[calc(100vw-16px)] rounded-2xl bg-white p-3.5 ${pos ? "" : "bottom-4 left-4"}`}
-          style={pos ? { left: `max(8px, min(${pos.x}px, calc(100vw - 424px)))`, top: `max(8px, min(${pos.y}px, calc(100vh - 190px)))` } : undefined}
+          ref={popout ? undefined : box}
+          className={
+            popout
+              ? "flex h-full flex-col overflow-y-auto bg-white p-3.5 text-zinc-900"
+              : `tm-pop tm-float fixed z-40 w-[26rem] max-w-[calc(100vw-16px)] rounded-2xl bg-white p-3.5 ${pos ? "" : "bottom-4 left-4"}`
+          }
+          style={!popout && pos ? { left: `max(8px, min(${pos.x}px, calc(100vw - 424px)))`, top: `max(8px, min(${pos.y}px, calc(100vh - 190px)))` } : undefined}
         >
           <div
-            onPointerDown={startDrag}
-            onDoubleClick={resetPos}
-            className="-mx-1 -mt-1 flex cursor-grab touch-none items-center gap-2 rounded-xl px-1 py-1 select-none active:cursor-grabbing"
-            title="Drag to move · double-click to reset"
+            onPointerDown={popout ? undefined : startDrag}
+            onDoubleClick={popout ? undefined : resetPos}
+            className={`-mx-1 -mt-1 flex items-center gap-2 rounded-xl px-1 py-1 select-none ${popout ? "" : "cursor-grab touch-none active:cursor-grabbing"}`}
+            title={popout ? undefined : "Drag to move · double-click to reset"}
           >
-            <Icon name="grip" size={14} className="text-zinc-300" />
+            {!popout && <Icon name="grip" size={14} className="text-zinc-300" />}
             <Icon name="headphones" size={18} className="text-zinc-500" />
             <span className="min-w-0 flex-1 truncate text-sm">
               <span className="font-semibold">{CALL}</span>
@@ -655,7 +744,7 @@ export default function Huddle({ channelId, onLeave }: { channelId: string; onLe
             {unanswered && people.length === 1 && <span className="ml-1 text-xs text-zinc-400">No answer</span>}
           </div>
           {othersSharing.length > 0 && (
-            <button onClick={() => setExpanded(true)} className="mb-2 flex w-full items-center gap-2 rounded-xl border border-tm-line px-3 py-1.5 text-left text-xs text-zinc-600 transition hover:bg-tm-surface">
+            <button onClick={toggleExpanded} className="mb-2 flex w-full items-center gap-2 rounded-xl border border-tm-line px-3 py-1.5 text-left text-xs text-zinc-600 transition hover:bg-tm-surface">
               <Icon name="monitor" size={14} />
               {othersSharing.map((p) => displayName(profiles[p.user])).join(", ")} {othersSharing.length > 1 ? "are" : "is"} sharing · View
             </button>
@@ -666,9 +755,62 @@ export default function Huddle({ channelId, onLeave }: { channelId: string; onLe
           {controls(false)}
         </div>
       )}
+    </>
+  );
+
+  return (
+    <>
+      {/* Voices play from the app's page either way, so they keep going whatever the call window does */}
+      {Object.entries(remotes).map(([k, s]) => s[MIC] && <Sound key={k} stream={s[MIC]} />)}
+
+      {popout ? (
+        <>
+          {createPortal(view, popout.document.body)}
+          <div className="tm-pop tm-float fixed bottom-4 left-4 z-40 flex max-w-[calc(100vw-32px)] items-center gap-2 rounded-2xl bg-white py-2 pr-2 pl-3">
+            <Icon name="headphones" size={18} className="shrink-0 text-zinc-500" />
+            <span className="min-w-0 flex-1 truncate text-sm">
+              <span className="font-semibold">{CALL}</span>
+              <span className="text-zinc-500"> · in its own window</span>
+            </span>
+            <Btn on={mine.muted} disabled={!local[MIC]} onClick={toggleMute} title={mine.muted ? "Unmute" : "Mute"}>
+              <Icon name={mine.muted ? "micOff" : "mic"} />
+            </Btn>
+            <Btn onClick={() => popout.close()} title="Back into the app">
+              <Icon name="popIn" />
+            </Btn>
+            <Btn danger onClick={onLeave} title={`Leave ${call}`}>
+              <Icon name="phoneOff" size={16} />
+            </Btn>
+          </div>
+        </>
+      ) : (
+        view
+      )}
 
       {inviting && <InvitePeople inHuddle={people.map((p) => p.user)} onClose={() => setInviting(false)} />}
     </>
+  );
+}
+
+// Shown in the other tabs while a call runs in one of them: the call has one connection per browser
+export function HuddleElsewhere() {
+  const { huddle, huddleElsewhere, huddleName, takeHuddleHere, leaveHuddleElsewhere } = useChat();
+  if (huddle || !huddleElsewhere) return null;
+  return (
+    <div className="tm-pop tm-float fixed bottom-4 left-4 z-40 flex max-w-[calc(100vw-32px)] items-center gap-2 rounded-2xl bg-white py-2 pr-2 pl-3">
+      <Icon name="headphones" size={18} className="shrink-0 text-tm-green" />
+      <span className="min-w-0 flex-1 truncate text-sm">
+        <span className="font-semibold">{CALL}</span>
+        <span className="text-zinc-500"> · {huddleName(huddleElsewhere)} · in another tab</span>
+      </span>
+      <Btn onClick={takeHuddleHere} title="Move the call to this tab">
+        <Icon name="popIn" />
+        <span className="pr-1.5">Move here</span>
+      </Btn>
+      <Btn danger onClick={leaveHuddleElsewhere} title={`Leave ${call}`}>
+        <Icon name="phoneOff" size={16} />
+      </Btn>
+    </div>
   );
 }
 

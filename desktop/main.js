@@ -176,7 +176,13 @@ function createWindow() {
   win.loadURL(APP_URL);
 
   // Links leaving the app open in the default browser
-  win.webContents.setWindowOpenHandler(({ url }) => {
+  win.webContents.setWindowOpenHandler(({ url, frameName }) => {
+    // The call popped out of the app (Huddle.tsx openCallWindow): a small window that stays on top
+    if (frameName === "tm-call" && (url === "" || url === "about:blank"))
+      return {
+        action: "allow",
+        overrideBrowserWindowOptions: { width: 440, height: 240, minWidth: 320, minHeight: 180, alwaysOnTop: true, autoHideMenuBar: true, title: "Workchime call", backgroundColor: "#ffffff" },
+      };
     if (new URL(url).origin === ORIGIN) return { action: "allow" };
     shell.openExternal(url);
     return { action: "deny" };
