@@ -6,7 +6,11 @@ declare global {
   interface Window {
     workchime?: {
       show: () => void;
-      ring: () => void;
+      // Builds before 1.3.0 ignore the details and bring the main window up instead of an incoming-call window
+      ring: (info?: { caller: string; where: string; avatar: string | null; meeting?: boolean }) => void;
+      // The incoming-call window (1.3.0+): closed when the ring ends; its Answer and Decline come back here
+      ringEnd?: () => void;
+      onRingAction?: (cb: (action: "answer" | "decline") => void) => () => void;
       // Browser sign-in (components/Auth.tsx DesktopSignIn); absent in desktop builds before 1.1.0
       signIn?: () => void;
       takeAuth?: () => Promise<string | null>;

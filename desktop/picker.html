@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'unsafe-inline'" />
+<title>Choose what to share</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    display: flex; flex-direction: column;
+    font: 14px "Segoe UI", system-ui, -apple-system, sans-serif; color: #18181b;
+    background: linear-gradient(180deg, #f0fdf4 0%, #ffffff 30%, #eff6ff 100%);
+    user-select: none;
+  }
+  header { padding: 18px 20px 0; }
+  h1 { margin: 0; font-size: 17px; font-weight: 600; }
+  .sub { margin-top: 2px; color: #71717a; font-size: 13px; }
+  .tabs { display: flex; gap: 4px; margin-top: 14px; border-bottom: 1px solid #e4e4e7; }
+  .tab {
+    border: 0; background: none; padding: 8px 12px; font: inherit; font-weight: 500; color: #71717a;
+    border-bottom: 2px solid transparent; margin-bottom: -1px; cursor: pointer;
+  }
+  .tab[aria-selected="true"] { color: #2563eb; border-color: #2563eb; }
+  main { flex: 1; overflow-y: auto; padding: 16px 20px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 14px; }
+  .card {
+    display: flex; flex-direction: column; gap: 8px; padding: 8px; border: 0; border-radius: 14px; background: #fff;
+    box-shadow: 0 0 0 1px #e4e4e7; cursor: pointer; text-align: left; font: inherit; color: inherit; transition: box-shadow .12s;
+  }
+  .card:hover { box-shadow: 0 0 0 2px #93c5fd; }
+  .card[aria-selected="true"] { box-shadow: 0 0 0 3px #2563eb; }
+  .card:focus-visible { outline: none; box-shadow: 0 0 0 3px #22c55e; }
+  .thumb {
+    aspect-ratio: 16 / 9; border-radius: 8px; background: #18181b; display: flex; align-items: center; justify-content: center;
+    overflow: hidden; color: #a1a1aa; font-size: 12px;
+  }
+  .thumb img { width: 100%; height: 100%; object-fit: contain; }
+  .label { display: flex; align-items: center; gap: 6px; min-width: 0; padding: 0 2px 2px; font-size: 13px; }
+  .label img { width: 16px; height: 16px; flex-shrink: 0; }
+  .label span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .empty { padding: 40px 0; text-align: center; color: #a1a1aa; }
+  footer { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 20px; border-top: 1px solid #e4e4e7; background: #fff; }
+  footer button { border-radius: 12px; padding: 8px 18px; font: inherit; font-weight: 600; cursor: pointer; }
+  #cancel { border: 1px solid #e4e4e7; background: #fff; color: #3f3f46; }
+  #cancel:hover { background: #f4f4f5; }
+  #share { border: 0; background: #2563eb; color: #fff; }
+  #share:hover { background: #1d4ed8; }
+  #share:disabled { background: #e4e4e7; color: #a1a1aa; cursor: default; }
+</style>
+</head>
+<body>
+  <header>
+    <h1>Choose what to share</h1>
+    <div class="sub">Everyone in the call will see what you pick</div>
+    <div class="tabs" role="tablist">
+      <button class="tab" role="tab" data-kind="screen" aria-selected="true">Entire screen</button>
+      <button class="tab" role="tab" data-kind="window" aria-selected="false">Window</button>
+    </div>
+  </header>
+  <main><div class="grid" id="grid"></div></main>
+  <footer>
+    <button id="cancel">Cancel</button>
+    <button id="share" disabled>Share</button>
+  </footer>
+<script>
+  let sources = [];
+  let kind = "screen";
+  let chosen = null;
+  const grid = document.getElementById("grid");
+  const shareBtn = document.getElementById("share");
+
+  const answer = (id) => window.picker.choose(id);
+
+  function render() {
+    grid.replaceChildren();
+    const list = sources.filter((s) => s.kind === kind);
+    if (!list.length) {
+      const p = document.createElement("p");
+      p.className = "empty";
+      p.textContent = kind === "screen" ? "No screens found" : "No windows to share";
+      grid.append(p);
+    }
+    list.forEach((s, i) => {
+      const card = document.createElement("button");
+      card.className = "card";
+      card.setAttribute("aria-selected", String(s.id === chosen));
+      const thumb = document.createElement("div");
+      thumb.className = "thumb";
+      if (s.thumb) {
+        const img = document.createElement("img");
+        img.src = s.thumb;
+        img.alt = "";
+        thumb.append(img);
+      } else thumb.textContent = "No preview";
+      const label = document.createElement("div");
+      label.className = "label";
+      if (s.icon) {
+        const icon = document.createElement("img");
+        icon.src = s.icon;
+        icon.alt = "";
+        label.append(icon);
+      }
+      const name = document.createElement("span");
+      // Windows can report the whole desktop as "Entire Screen"; number them when there are several
+      name.textContent = s.kind === "screen" && list.length > 1 ? `Screen ${i + 1}` : s.name;
+      name.title = s.name;
+      label.append(name);
+      card.append(thumb, label);
+      card.onclick = () => {
+        chosen = s.id;
+        shareBtn.disabled = false;
+        render();
+      };
+      card.ondblclick = () => answer(s.id);
+      grid.append(card);
+    });
+  }
+
+  for (const tab of document.querySelectorAll(".tab"))
+    tab.onclick = () => {
+      kind = tab.dataset.kind;
+      for (const t of document.querySelectorAll(".tab")) t.setAttribute("aria-selected", String(t === tab));
+      render();
+    };
+  shareBtn.onclick = () => chosen && answer(chosen);
+  document.getElementById("cancel").onclick = () => answer(null);
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") answer(null);
+    // On a focused button, Enter presses that button instead
+    if (e.key === "Enter" && chosen && !(e.target instanceof HTMLButtonElement)) {
+      e.preventDefault();
+      answer(chosen);
+    }
+  });
+
+  window.picker.sources().then((list) => {
+    sources = list;
+    // One screen: preselect it, so sharing it is a single click
+    const screens = sources.filter((s) => s.kind === "screen");
+    if (screens.length === 1) {
+      chosen = screens[0].id;
+      shareBtn.disabled = false;
+    }
+    render();
+  });
+</script>
+</body>
+</html>

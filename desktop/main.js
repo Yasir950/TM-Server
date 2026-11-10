@@ -1,6 +1,6 @@
 // Workchime desktop: a native window around the hosted web app.
 // Closing the window keeps it running in the tray, so messages and calls still arrive (Electron has no Web Push).
-const { app, BrowserWindow, Menu, Tray, ipcMain, nativeImage, shell, session, desktopCapturer, systemPreferences } = require("electron");
+const { app, BrowserWindow, Menu, Tray, ipcMain, nativeImage, shell, session, desktopCapturer, systemPreferences, screen } = require("electron");
 const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
@@ -49,14 +49,21 @@ async function start() {
     cb(ok && ["media", "notifications", "display-capture", "clipboard-sanitized-write", "fullscreen"].includes(permission));
   });
 
-  // getDisplayMedia: macOS shows its own picker; elsewhere share the primary screen
+  // getDisplayMedia: macOS 15+ shows its own picker; elsewhere our picker (picker.html) lists screens and windows
   ses.setDisplayMediaRequestHandler(
     async (_req, cb) => {
-      const [screen] = await desktopCapturer.getSources({ types: ["screen"] });
-      cb(screen ? { video: screen } : {});
+      try {
+        const sources = await desktopCapturer.getSources({ types: ["screen", "window"], thumbnailSize: { width: 400, height: 225 }, fetchWindowIcons: true });
+        const chosen = await pickSource(sources.filter((s) => s.name), BrowserWindow.getFocusedWindow() ?? win);
+        cb(chosen ? { video: chosen } : {});
+      } catch {
+        cb({});
+      }
     },
     { useSystemPicker: true }
   );
+  ipcMain.handle("picker-sources", (e) => (picking && e.sender === picking.wc ? picking.list : []));
+  ipcMain.on("picker-choice", (e, id) => picking && e.sender === picking.wc && picking.finish(id));
 
   if (process.platform === "darwin") {
     systemPreferences.askForMediaAccess("microphone").catch(() => {});
@@ -73,10 +80,25 @@ async function start() {
   // From the web app (preload.js): a notification was clicked, or a call is ringing
   const fromApp = (e) => e.senderFrame && new URL(e.senderFrame.url).origin === ORIGIN;
   ipcMain.on("show", (e) => fromApp(e) && showWindow());
-  ipcMain.on("ring", (e) => {
-    if (!fromApp(e)) return;
-    showWindow();
+  ipcMain.on("ring", (e, info) => {
+    if (!fromApp(e) || !win) return;
+    // A web app from before the incoming-call window: bring the app up so its dialog is seen
+    if (!info || typeof info !== "object") {
+      showWindow();
+      return win.flashFrame(true);
+    }
     win.flashFrame(true);
+    // The app is in front, showing its own incoming-call dialog
+    if (win.isVisible() && win.isFocused()) return;
+    showRing(info);
+  });
+  ipcMain.on("ring-end", (e) => fromApp(e) && closeRing());
+  ipcMain.handle("ring-info", (e) => (ringWin && e.sender === ringWin.webContents ? ringInfo : null));
+  ipcMain.on("ring-action", (e, action) => {
+    if (!ringWin || e.sender !== ringWin.webContents || !["answer", "decline"].includes(action)) return;
+    closeRing();
+    if (action === "answer") showWindow();
+    win?.webContents.send("ring-action", action);
   });
   ipcMain.on("sign-in", (e) => fromApp(e) && beginSignIn());
   ipcMain.on("badge", (e, b) => fromApp(e) && setBadge(b));
@@ -98,6 +120,97 @@ async function start() {
   // Launched by a sign-in link while the app wasn't running (Windows)
   const link = process.argv.find((a) => a.startsWith(`${PROTOCOL}://`));
   if (link) handleLink(link);
+}
+
+// Incoming call, like Slack: a small window of its own in the middle of the screen, on top of everything,
+// shown even while the app is hidden in the tray. The web app closes it when the ring ends (ring-end).
+let ringWin = null;
+let ringInfo = null;
+let ringTimer = null;
+
+function showRing(info) {
+  closeRing();
+  const text = (v, max) => (typeof v === "string" ? v.slice(0, max) : "");
+  ringInfo = {
+    caller: text(info.caller, 120) || "Someone",
+    where: text(info.where, 160),
+    avatar: typeof info.avatar === "string" && /^https:\/\//.test(info.avatar) ? info.avatar : null,
+    meeting: info.meeting === true,
+  };
+  const { workArea } = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
+  const width = 340;
+  const height = 360;
+  const w = new BrowserWindow({
+    width,
+    height,
+    x: Math.round(workArea.x + (workArea.width - width) / 2),
+    y: Math.round(workArea.y + (workArea.height - height) / 2),
+    frame: false,
+    resizable: false,
+    minimizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    alwaysOnTop: true,
+    title: "Incoming call",
+    backgroundColor: "#ffffff",
+    show: false,
+    webPreferences: { contextIsolation: true, sandbox: true, preload: path.join(__dirname, "ring-preload.js") },
+  });
+  w.setAlwaysOnTop(true, "screen-saver");
+  w.once("ready-to-show", () => w.show());
+  w.on("closed", () => ringWin === w && (ringWin = null));
+  w.loadFile(path.join(__dirname, "ring.html"));
+  ringWin = w;
+  // In case the web app never says the ring ended (it rings for 30 seconds)
+  ringTimer = setTimeout(closeRing, 45_000);
+}
+
+function closeRing() {
+  clearTimeout(ringTimer);
+  if (ringWin && !ringWin.isDestroyed()) ringWin.close();
+  ringWin = null;
+}
+
+// The open screen-share picker: its window, what it lists, and how it answers
+let picking = null;
+
+// A small window over the one that asked, like Chrome's "Choose what to share"; resolves with the source or null
+function pickSource(sources, parent) {
+  picking?.finish(null);
+  return new Promise((resolve) => {
+    const picker = new BrowserWindow({
+      parent: parent && !parent.isDestroyed() ? parent : undefined,
+      modal: process.platform !== "darwin" && !!parent,
+      width: 780,
+      height: 600,
+      minWidth: 520,
+      minHeight: 420,
+      title: "Choose what to share",
+      autoHideMenuBar: true,
+      minimizable: false,
+      maximizable: false,
+      backgroundColor: "#ffffff",
+      show: false,
+      webPreferences: { contextIsolation: true, sandbox: true, preload: path.join(__dirname, "picker-preload.js") },
+    });
+    const list = sources.map((s) => ({
+      id: s.id,
+      name: s.name,
+      kind: s.id.startsWith("screen:") ? "screen" : "window",
+      thumb: s.thumbnail.isEmpty() ? null : s.thumbnail.toDataURL(),
+      icon: s.appIcon && !s.appIcon.isEmpty() ? s.appIcon.toDataURL() : null,
+    }));
+    const finish = (id) => {
+      if (picking?.wc !== picker.webContents) return;
+      picking = null;
+      resolve(sources.find((s) => s.id === id) ?? null);
+      if (!picker.isDestroyed()) picker.close();
+    };
+    picking = { wc: picker.webContents, list, finish };
+    picker.on("closed", () => finish(null));
+    picker.once("ready-to-show", () => picker.show());
+    picker.loadFile(path.join(__dirname, "picker.html"));
+  });
 }
 
 // Browser sign-in, like Slack: the website (src/app/desktop-auth) signs the user in and sends back a one-time token.
@@ -171,7 +284,14 @@ function createWindow() {
     autoHideMenuBar: true,
     show: !startHidden,
     // Keep realtime and ring timers running at full speed while hidden in the tray
-    webPreferences: { contextIsolation: true, sandbox: true, backgroundThrottling: false, preload: path.join(__dirname, "preload.js") },
+    // Ringtones play even when the app started hidden at login and was never clicked
+    webPreferences: {
+      contextIsolation: true,
+      sandbox: true,
+      backgroundThrottling: false,
+      autoplayPolicy: "no-user-gesture-required",
+      preload: path.join(__dirname, "preload.js"),
+    },
   });
   win.loadURL(APP_URL);
 

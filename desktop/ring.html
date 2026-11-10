@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src https: data:; style-src 'unsafe-inline'; script-src 'unsafe-inline'" />
+<title>Incoming call</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    display: flex; flex-direction: column; align-items: center;
+    font: 14px "Segoe UI", system-ui, -apple-system, sans-serif; color: #18181b;
+    background: linear-gradient(180deg, #f0fdf4 0%, #ffffff 45%, #eff6ff 100%);
+    border: 3px solid #22c55e; overflow: hidden; user-select: none;
+    /* Frameless: the whole window drags, except its buttons */
+    -webkit-app-region: drag;
+  }
+  .band { align-self: stretch; height: 6px; background: linear-gradient(90deg, #22c55e, #2563eb); }
+  .kind {
+    margin-top: 22px; display: flex; align-items: center; gap: 6px;
+    font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: #a1a1aa;
+  }
+  .avatar-wrap { position: relative; margin-top: 22px; }
+  .pulse {
+    position: absolute; inset: -10px; border-radius: 34%; background: rgba(34, 197, 94, .25);
+    animation: ping 1.8s cubic-bezier(0, 0, .2, 1) infinite;
+  }
+  @keyframes ping { 75%, 100% { transform: scale(1.25); opacity: 0; } }
+  .avatar {
+    position: relative; width: 84px; height: 84px; border-radius: 30%; overflow: hidden;
+    display: flex; align-items: center; justify-content: center;
+    background: #4a8fcb; color: #fff; font-size: 34px; font-weight: 600;
+    box-shadow: 0 0 0 4px #fff, 0 0 0 7px rgba(34, 197, 94, .4);
+  }
+  .avatar img { width: 100%; height: 100%; object-fit: cover; }
+  .caller { margin-top: 20px; max-width: 90%; font-size: 19px; font-weight: 600; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .where { margin-top: 4px; max-width: 90%; color: #71717a; font-size: 13px; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .actions { margin-top: auto; margin-bottom: 22px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; width: calc(100% - 44px); -webkit-app-region: no-drag; }
+  button {
+    display: flex; align-items: center; justify-content: center; gap: 8px; padding: 11px 0; border-radius: 12px;
+    font: inherit; font-weight: 600; cursor: pointer; transition: transform .1s, background .12s;
+  }
+  button:active { transform: scale(.97); }
+  #decline { border: 1px solid #e4e4e7; background: #fff; color: #3f3f46; }
+  #decline:hover { background: #f4f4f5; }
+  #answer { border: 0; background: #22c55e; color: #fff; }
+  #answer:hover { background: #16a34a; }
+  svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+</style>
+</head>
+<body>
+  <div class="band"></div>
+  <div class="kind" id="kind">Incoming call</div>
+  <div class="avatar-wrap">
+    <span class="pulse"></span>
+    <div class="avatar" id="avatar"></div>
+  </div>
+  <div class="caller" id="caller"></div>
+  <div class="where" id="where"></div>
+  <div class="actions">
+    <button id="decline">
+      <svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12" /></svg>
+      Decline
+    </button>
+    <button id="answer" autofocus>
+      <svg viewBox="0 0 24 24"><path d="M3 14v-3a9 9 0 0 1 18 0v3" /><path d="M21 16a2 2 0 0 1-2 2h-1v-6h1a2 2 0 0 1 2 2zM3 16a2 2 0 0 0 2 2h1v-6H5a2 2 0 0 0-2 2z" /></svg>
+      Answer
+    </button>
+  </div>
+<script>
+  document.getElementById("answer").onclick = () => window.ring.answer();
+  document.getElementById("decline").onclick = () => window.ring.decline();
+  document.addEventListener("keydown", (e) => e.key === "Escape" && window.ring.decline());
+
+  window.ring.info().then((info) => {
+    if (!info) return;
+    document.getElementById("kind").textContent = info.meeting ? "Scheduled call starting" : "Incoming call";
+    document.getElementById("caller").textContent = info.caller;
+    document.getElementById("where").textContent = info.where;
+    const avatar = document.getElementById("avatar");
+    const initial = () => (avatar.textContent = (info.caller.trim()[0] || "?").toUpperCase());
+    if (info.avatar) {
+      const img = document.createElement("img");
+      img.alt = "";
+      img.src = info.avatar;
+      img.onerror = () => {
+        img.remove();
+        initial();
+      };
+      avatar.append(img);
+    } else initial();
+  });
+</script>
+</body>
+</html>

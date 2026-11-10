@@ -113,6 +113,9 @@ type Signal = { from: string; to: string; sdp?: RTCSessionDescriptionInit; ice?:
 type Peer = { pc: RTCPeerConnection; chain: Promise<void> };
 type Reaction = { emoji: string; id: number };
 type Person = { key: string; user: string; state: State; streams: (MediaStream | null | undefined)[]; self?: boolean; reaction?: Reaction };
+// What the call shows: a person, or (with screen set) the screen they share
+type Tile = { key: string; person: Person; screen?: MediaStream };
+const screenKey = (key: string) => `${key}:screen`;
 
 const REACTIONS = ["👍", "❤️", "😂", "🎉", "👏", "😮", "🙏", "🔥"];
 
@@ -218,21 +221,40 @@ function Sound({ stream }: { stream: MediaStream }) {
   return <audio ref={ref} autoPlay />;
 }
 
+// Keeps someone (or their screen) on the main stage until unpinned
+function PinButton({ pinned, light, small, onClick }: { pinned: boolean; light?: boolean; small?: boolean; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      title={pinned ? "Unpin" : "Pin"}
+      aria-label={pinned ? "Unpin" : "Pin"}
+      aria-pressed={pinned}
+      className={`flex shrink-0 items-center justify-center rounded-full shadow-sm backdrop-blur transition active:scale-95 ${small ? "h-6 w-6" : "h-7 w-7"} ${pinned ? "bg-tm-blue text-white" : light ? "bg-white/90 text-zinc-700 ring-1 ring-zinc-200/80 hover:bg-white" : "bg-black/50 text-white hover:bg-black/70"}`}
+    >
+      <Icon name="pin" size={small ? 12 : 14} />
+    </button>
+  );
+}
+
 // Call window: a person filling their grid cell, avatar centered with a glow while they talk
 function WindowTile({
   p,
   profile,
   compact,
+  pinned = false,
+  onPin,
 }: {
   p: Person;
   profile?: Profile;
   compact?: boolean;
+  pinned?: boolean;
+  onPin?: () => void;
 }) {
   const speaking = useSpeaking(p.streams[MIC], !p.state.muted);
   const cam = p.state.camera ? p.streams[CAMERA] : null;
   return (
     <div
-      className={`relative flex h-full min-h-0 w-full items-center justify-center overflow-hidden rounded-2xl ring-2 transition ${speaking ? "ring-tm-green" : p.state.hand ? "ring-amber-400" : "ring-tm-blue/25"}`}
+      className={`group relative flex h-full min-h-0 w-full items-center justify-center overflow-hidden rounded-2xl ring-2 transition ${speaking ? "ring-tm-green" : p.state.hand ? "ring-amber-400" : "ring-tm-blue/25"}`}
       style={{
         background: "linear-gradient(160deg, #ecfdf5 0%, #eff6ff 100%)",
       }}
@@ -255,6 +277,14 @@ function WindowTile({
           {!compact && "Hand raised"}
         </span>
       )}
+      {/* Shown on hover, always while pinned or on touch screens (no hover there) */}
+      {onPin && (
+        <span
+          className={`absolute ${compact ? "top-1.5 right-1.5" : "top-2.5 right-2.5"} transition-opacity ${pinned ? "" : "opacity-0 group-hover:opacity-100 focus-within:opacity-100 [@media(hover:none)]:opacity-100"}`}
+        >
+          <PinButton pinned={pinned} light={!cam} small={compact} onClick={onPin} />
+        </span>
+      )}
       {p.reaction && (
         <span
           key={p.reaction.id}
@@ -269,11 +299,62 @@ function WindowTile({
         {p.state.muted && (
           <Icon name="micOff" size={compact ? 11 : 12} className="shrink-0 text-red-500" />
         )}
+        {p.state.sharing && (
+          <Icon name="monitor" size={compact ? 11 : 12} className="shrink-0 text-tm-blue" />
+        )}
         <span className="truncate">
           {displayName(profile)}
           {p.self && <span className="opacity-60"> (you)</span>}
         </span>
       </span>
+    </div>
+  );
+}
+
+// A shared screen: on stage, or small in the strip beside it
+function ScreenTile({
+  stream,
+  label,
+  self,
+  compact,
+  pinned,
+  onPin,
+  onStop,
+}: {
+  stream: MediaStream;
+  label: string;
+  self?: boolean;
+  compact?: boolean;
+  pinned: boolean;
+  onPin: () => void;
+  onStop?: () => void;
+}) {
+  return (
+    <div className="group relative h-full min-h-0 w-full min-w-0 overflow-hidden rounded-2xl bg-zinc-900 ring-2 ring-tm-blue/30">
+      <div className="absolute inset-0">
+        <Video stream={stream} contain />
+      </div>
+      <span
+        className={`absolute flex items-center rounded-full text-white backdrop-blur ${compact ? "bottom-1.5 left-1.5 max-w-[calc(100%-12px)] gap-1 px-2 py-0.5 text-[11px]" : "top-2.5 left-2.5 max-w-[60%] gap-1.5 px-2.5 py-1 text-xs"} ${self ? "bg-tm-green/85" : "bg-black/60"}`}
+      >
+        <Icon name={self ? "monitorUp" : "monitor"} size={compact ? 11 : 13} className="shrink-0" />
+        <span className="truncate">{label}</span>
+      </span>
+      <div className={`absolute flex items-center gap-1.5 ${compact ? "top-1.5 right-1.5" : "top-2.5 right-2.5"}`}>
+        {onStop && (
+          <button
+            onClick={onStop}
+            className="rounded-full bg-red-500 px-3 py-1 text-xs font-semibold text-white shadow-sm transition hover:bg-red-600 active:scale-95"
+          >
+            Stop sharing
+          </button>
+        )}
+        <span
+          className={`transition-opacity ${pinned ? "" : "opacity-0 group-hover:opacity-100 focus-within:opacity-100 [@media(hover:none)]:opacity-100"}`}
+        >
+          <PinButton pinned={pinned} small={compact} onClick={onPin} />
+        </span>
+      </div>
     </div>
   );
 }
@@ -356,6 +437,9 @@ export default function Huddle({
   // True from the start when the window is about to open (see the auto-open effect).
   const [launching, setLaunching] = useState(() => windowed);
   const [focus, setFocus] = useState<string | null>(null);
+  // Someone pinned to the main stage: their screen if they share one, else them
+  const [pinned, setPinned] = useState<string | null>(null);
+  const togglePin = (key: string) => setPinned((k) => (k === key ? null : key));
   const [inviting, setInviting] = useState(false);
   const [unanswered, setUnanswered] = useState(false);
   // Where the minimized box was dragged to; null keeps it docked bottom-left
@@ -494,7 +578,7 @@ export default function Huddle({
         sharers = new Set(Object.keys(others).filter((k) => others[k].sharing));
         if (started) {
           setExpanded(true);
-          setFocus(started);
+          setFocus(screenKey(started));
         }
         // Only the lower key offers, so two peers never offer to each other at once
         for (const key of Object.keys(others))
@@ -779,10 +863,16 @@ export default function Huddle({
     { key: "me", user: me.id, state: mine, streams: local, self: true, reaction: reactions.me },
     ...Object.entries(present).map(([key, s]) => ({ key, user: key.split(":")[0], state: s, streams: remotes[key] ?? [], reaction: reactions[key] })),
   ];
+  // Every tile: each person, plus each shared screen as a tile of its own, so either can be pinned
+  const tiles: Tile[] = people.flatMap((p) => {
+    const s = p.state.sharing ? p.streams[SCREEN] : null;
+    return s ? [{ key: p.key, person: p }, { key: screenKey(p.key), person: p, screen: s }] : [{ key: p.key, person: p }];
+  });
   // Other people's screens come before your own
-  const screens = people.filter((p) => p.state.sharing && p.streams[SCREEN]).sort((a, b) => Number(!!a.self) - Number(!!b.self));
-  const main = screens.find((p) => p.key === focus) ?? screens[0];
-  const othersSharing = screens.filter((p) => !p.self);
+  const screens = tiles.filter((t) => t.screen).sort((a, b) => Number(!!a.person.self) - Number(!!b.person.self));
+  const alone = people.length === 1;
+  // A pin wins over whoever is sharing; with no one else here there's nothing to pin against
+  const main = (alone ? undefined : tiles.find((t) => t.key === pinned)) ?? screens.find((t) => t.key === focus) ?? screens[0];
   const title = huddleName(channelId);
   const cols = people.length === 1 ? 1 : portrait ? (people.length <= 3 ? 1 : 2) : people.length <= 4 ? 2 : 3;
   const rows = Math.ceil(people.length / cols);
@@ -853,9 +943,33 @@ export default function Huddle({
     </div>
   );
 
+  // One tile, on stage (large) or in the strip (compact); its pin is its own, so a person and their screen pin apart
+  const tile = (t: Tile, compact: boolean) => {
+    const p = t.person;
+    const isPinned = pinned === t.key;
+    const onPin = () => togglePin(t.key);
+    if (!t.screen)
+      return <WindowTile p={p} profile={profiles[p.user]} compact={compact} pinned={isPinned} onPin={onPin} />;
+    const label = p.self
+      ? compact
+        ? "Your screen"
+        : `You're sharing your screen · everyone in the ${call} can see it`
+      : `${displayName(profiles[p.user])}'s screen`;
+    return (
+      <ScreenTile
+        stream={t.screen}
+        label={label}
+        self={p.self}
+        compact={compact}
+        pinned={isPinned}
+        onPin={onPin}
+        onStop={p.self && !compact ? stopShare : undefined}
+      />
+    );
+  };
+
   // The call screen, Slack-huddle style: a calling screen until someone joins, then everyone's tiles.
   // It fills the call's own window, or the whole app when expanded (always on a phone).
-  const alone = people.length === 1;
   const dm = channels[channelId]?.kind === "dm";
   const callee = dm
     ? profiles[(dmMembers[channelId] ?? []).find((id) => id !== me.id) ?? ""]
@@ -928,50 +1042,16 @@ export default function Huddle({
         {main ? (
           // Screen on top with people in a strip below on a phone; side by side when there's room
           <div className={`grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)_auto] gap-2 ${mini ? "" : "sm:grid-cols-[minmax(0,1fr)_11rem] sm:grid-rows-1 sm:gap-3"}`}>
-            {main.self ? (
-              // Your own screen shown back to you just mirrors itself endlessly: say so instead
-              <div className={`flex min-h-0 min-w-0 flex-col items-center justify-center rounded-2xl bg-white/70 text-center ring-2 ring-tm-blue/20 ${mini ? "gap-1 p-2" : "gap-2 p-6"}`}>
-                {!mini && (
-                  <span className="mb-1 flex h-14 w-14 items-center justify-center rounded-2xl bg-linear-to-br from-tm-green to-tm-blue text-white shadow-md">
-                    <Icon name="monitorUp" size={26} />
-                  </span>
-                )}
-                <div className={`font-semibold ${mini ? "text-sm" : ""}`}>You&apos;re sharing your screen</div>
-                {!mini && <div className="text-sm text-zinc-500">Everyone in the {call} can see it</div>}
-                <button onClick={stopShare} className={`rounded-xl bg-red-500 font-semibold text-white transition hover:bg-red-600 active:scale-95 ${mini ? "mt-1 px-3 py-1 text-xs" : "mt-2 px-4 py-2 text-sm"}`}>
-                  Stop sharing
-                </button>
-              </div>
-            ) : (
-              <div className="relative min-h-0 min-w-0 overflow-hidden rounded-2xl bg-zinc-900 ring-2 ring-tm-blue/30">
-                <div className="absolute inset-0">
-                  <Video key={main.key} stream={main.streams[SCREEN]!} contain />
-                </div>
-                <span className="absolute top-2.5 left-2.5 flex max-w-[70%] items-center gap-1.5 rounded-full bg-black/60 px-2.5 py-1 text-xs text-white backdrop-blur">
-                  <Icon name="monitor" size={13} className="shrink-0" />
-                  <span className="truncate">{displayName(profiles[main.user])}&apos;s screen</span>
-                </span>
-                {othersSharing.length > 1 && (
-                  <div className="absolute top-2.5 right-2.5 flex gap-1.5">
-                    {othersSharing.map((p) => (
-                      <button
-                        key={p.key}
-                        onClick={() => setFocus(p.key)}
-                        className={`rounded-full px-2.5 py-1 text-xs transition ${p === main ? "bg-white text-slate-900" : "bg-black/60 text-white hover:bg-black/80"}`}
-                      >
-                        {displayName(profiles[p.user])}
-                      </button>
-                    ))}
+            {tile(main, mini)}
+            {/* Everything not on stage, screens included; padded so the scroller doesn't clip the tiles' rings */}
+            <div className={`-m-1 flex min-h-0 gap-2 overflow-x-auto p-1 ${mini ? "" : "sm:flex-col sm:overflow-x-hidden sm:overflow-y-auto"}`}>
+              {tiles
+                .filter((t) => t.key !== main.key)
+                .map((t) => (
+                  <div key={t.key} className={`aspect-video shrink-0 ${mini ? "w-20" : "w-28 sm:w-full"}`}>
+                    {tile(t, true)}
                   </div>
-                )}
-              </div>
-            )}
-            <div className={`flex min-h-0 gap-2 overflow-x-auto ${mini ? "" : "sm:flex-col sm:overflow-x-hidden sm:overflow-y-auto"}`}>
-              {people.map((p) => (
-                <div key={p.key} className={`aspect-video shrink-0 ${mini ? "w-20" : "w-28 sm:w-full"}`}>
-                  <WindowTile p={p} profile={profiles[p.user]} compact />
-                </div>
-              ))}
+                ))}
             </div>
           </div>
         ) : alone ? (
@@ -1029,6 +1109,7 @@ export default function Huddle({
                 p={p}
                 profile={profiles[p.user]}
                 compact={mini || people.length > 2}
+                onPin={() => togglePin(p.key)}
               />
             ))}
           </div>
@@ -1089,7 +1170,7 @@ export function HuddleElsewhere() {
       <Icon name="headphones" size={18} className="shrink-0 text-tm-green" />
       <span className="min-w-0 flex-1 truncate text-sm">
         <span className="font-semibold">{CALL}</span>
-        <span className="text-zinc-500"> · {huddleName(huddleElsewhere)} · in another tab</span>
+        <span className="text-zinc-500"> · {huddleName(huddleElsewhere)} · open in another tab or device</span>
       </span>
       <Btn onClick={takeHuddleHere} title="Move the call to this tab">
         <Icon name="popIn" />
@@ -1172,6 +1253,18 @@ export function IncomingHuddle() {
     const t = setTimeout(() => dismissRing(), seenLive.current === ring ? 0 : 5000);
     return () => clearTimeout(t);
   }, [ring, live, dismissRing]);
+
+  // Answer and Decline from the desktop app's incoming-call window
+  const onRingAction = useRef<(action: "answer" | "decline") => void>(() => {});
+  useEffect(() => {
+    onRingAction.current = (action) => {
+      if (!ring) return;
+      if (action === "decline") return dismissRing(true);
+      setHuddle(ring.channelId);
+      if (channels[ring.channelId]) setActive(ring.channelId);
+    };
+  });
+  useEffect(() => window.workchime?.onRingAction?.((a) => onRingAction.current(a)), []);
 
   if (!ring) return null;
   const caller = profiles[ring.from];

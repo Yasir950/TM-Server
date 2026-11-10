@@ -25,6 +25,7 @@ self.addEventListener("push", (event) => {
   event.waitUntil(
     (async () => {
       if (d.kind === "cancel") return cancel(d);
+      if (d.kind === "handled") return handled(d);
       // A focused app window already shows its own toast or incoming-call dialog
       if ((await appWindows()).some((w) => w.focused)) return;
       if (d.kind === "call") return ring(d);
@@ -67,6 +68,21 @@ async function cancel(d) {
   ringing.forEach((n) => n.close());
   if ((await appWindows()).some((w) => w.focused)) return;
   await self.registration.showNotification(`Missed call from ${d.caller}`, { body: d.where, tag: d.tag, icon: d.icon || ICON, badge: ICON, data: { url: `${APP}?c=${d.channel}` } });
+}
+
+// Answered or declined on another of the user's devices: stop ringing here, quietly
+async function handled(d) {
+  const ringing = (await self.registration.getNotifications({ tag: d.tag })).filter((n) => n.data?.expires);
+  ringing.forEach((n) => n.close());
+  // Nothing was ringing here (or the open app shows its own state): nothing to say
+  if (!ringing.length || (await appWindows()).some((w) => w.focused)) return;
+  await self.registration.showNotification(d.answered ? "Answered on another device" : "Declined on another device", {
+    tag: d.tag,
+    silent: true,
+    icon: ICON,
+    badge: ICON,
+    data: { url: `${APP}?c=${d.channel}` },
+  });
 }
 
 self.addEventListener("notificationclick", (event) => {

@@ -3,7 +3,14 @@ const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("workchime", {
   show: () => ipcRenderer.send("show"),
-  ring: () => ipcRenderer.send("ring"),
+  // Incoming call: a window of its own in the middle of the screen (see showRing in main.js)
+  ring: (info) => ipcRenderer.send("ring", info),
+  ringEnd: () => ipcRenderer.send("ring-end"),
+  onRingAction: (cb) => {
+    const listener = (_e, action) => cb(action);
+    ipcRenderer.on("ring-action", listener);
+    return () => ipcRenderer.removeListener("ring-action", listener);
+  },
   signIn: () => ipcRenderer.send("sign-in"),
   takeAuth: () => ipcRenderer.invoke("take-auth"),
   // Unread badge on the taskbar/dock icon (src/components/chat/Chat.tsx): a number for DMs and mentions, a dot for

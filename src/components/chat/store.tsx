@@ -3,7 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { supabase, displayName, inDnd, meetingEnd, meetingLive, mentionsMe, type Channel, type Company, type Meeting, type Member, type Membership, type Message, type Plan, type Profile, type Project, type AppNotification } from "@/lib/supabase";
-import { APP_NAME, call } from "@/lib/brand";
+import { APP_NAME, CALL, call } from "@/lib/brand";
 import { plainText, timeOf } from "@/lib/format";
 import { enablePush, focusApp } from "@/lib/push";
 import { AppSkeleton } from "../ui";
@@ -102,6 +102,14 @@ export const useChat = () => useContext(Ctx)!;
 
 // Workspace-wide room for huddle presence and rings, opened by ChatProvider
 const huddleChannel = () => supabase.getChannels().find((c) => c.topic === "realtime:huddles");
+// One tab or device's entry in huddles presence; tab and at are absent from older clients
+type HuddleMeta = { channel: string | null; tab?: string; at?: number };
+
+// Answered or declined here: this user's other tabs and devices stop ringing, closed ones through Web Push
+function ringHandled(uid: string, channelId: string, answered: boolean) {
+  huddleChannel()?.send({ type: "broadcast", event: "ring-handled", payload: { to: uid, channelId } });
+  supabase.rpc("push_ring_handled", { p_channel: channelId, p_answered: answered }).then();
+}
 
 // A reload keeps the call: Huddle saves it when the page goes away and the reloaded tab rejoins it.
 // Read once per page load, so a later remount of ChatProvider doesn't rejoin again.
@@ -192,6 +200,8 @@ export function ChatProvider({ session, children }: { session: Session; children
   const [ring, setRing] = useState<Ring | null>(null);
   // The browser notification shown for the current ring, closed when the ring ends
   const ringNote = useRef<Notification | null>(null);
+  // When this tab joined its current call: of two of this user's devices in one call, the later join keeps it
+  const joinedAt = useRef(0);
   const [huddleNotice, setHuddleNotice] = useState<string | null>(null);
   // User id → when they were last rung for the current huddle
   const [rung, setRung] = useState<Record<string, number>>({});
@@ -534,24 +544,56 @@ export function ChatProvider({ session, children }: { session: Session; children
     };
   }, [uid, reload, setActive, loadThreadUnread, dismissToast]);
 
-  // Huddles: presence says who is in which huddle; broadcasts ring people and carry their replies
+  // Leaving from a message sent by another tab or device goes through the full setHuddle (ring cancel and all)
+  const setHuddleRef = useRef<(channelId: string | null) => void>(() => {});
+
+  // Huddles: presence says who is in which huddle; broadcasts ring people and carry their replies.
+  // Each of this user's tabs and devices is its own presence entry (tab, and when it joined), which is how
+  // a call answered on one device stops ringing on the others, and one person never joins twice.
   useEffect(() => {
     const ch = supabase.channel("huddles", { config: { presence: { key: uid }, broadcast: { self: false } } });
     ch.on("presence", { event: "sync" }, () => {
+      const state = ch.presenceState<HuddleMeta>();
       const next: Record<string, string[]> = {};
-      for (const [id, metas] of Object.entries(ch.presenceState<{ channel: string | null }>()))
+      for (const [id, metas] of Object.entries(state))
         for (const c of new Set(metas.map((m) => m.channel))) if (c) (next[c] ??= []).push(id);
       setHuddles(next);
+
+      const { huddle, ring } = live.current;
+      const others = (state[uid] ?? []).filter((m) => m.channel && m.tab !== TAB);
+      // Picked up on another device or tab: stop ringing here
+      if (ring && others.some((m) => m.channel === ring.channelId)) setRing(null);
+      // The same call joined on another device after this one: it moves there, like Slack
+      const newer = others.find(
+        (m) => m.channel === huddle && ((m.at ?? 0) > joinedAt.current || (m.at === joinedAt.current && (m.tab ?? "") > TAB)),
+      );
+      if (huddle && newer) {
+        huddleHandoff.current = true;
+        setHuddleState(null);
+        setRung({});
+        const id = `moved:${huddle}:${newer.at}`;
+        setToasts((t) => [...t.slice(-2), { id, title: `${CALL} moved`, body: "You joined it on another device", onOpen: () => {} }]);
+        setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 6000);
+      }
+      // A call open on another device shows here as "open elsewhere", with Move here and Leave
+      const away = others.find((m) => m.channel !== huddle);
+      setElsewhere((e) =>
+        away ? (e?.channelId === away.channel && e.tab === away.tab ? e : { tab: away.tab ?? "", channelId: away.channel! }) : null,
+      );
     })
       .on("broadcast", { event: "ring" }, ({ payload }) => {
         const r = payload as Ring & { to: string[] };
-        const { huddle, profiles } = live.current;
-        if (!r.to.includes(uid) || huddle === r.channelId || live.current.elsewhere?.channelId === r.channelId) return;
+        const { huddle, huddles, profiles } = live.current;
+        // Already in it, here or on another device
+        if (!r.to.includes(uid) || huddle === r.channelId || live.current.elsewhere?.channelId === r.channelId || huddles[r.channelId]?.includes(uid)) return;
         setHuddleTitles((t) => ({ ...t, [r.channelId]: r.title }));
         setRing({ channelId: r.channelId, from: r.from, title: r.title });
         if (inDnd(profiles[uid])) return;
-        // The desktop app pops its window up out of the tray so the call dialog is seen
-        window.workchime?.ring();
+        // The desktop app shows its incoming-call window in the middle of the screen, even from the tray
+        // (older desktop builds ignore the details and bring the main window up instead)
+        const caller = profiles[r.from];
+        window.workchime?.ring({ caller: displayName(caller), where: r.title, avatar: caller?.avatar_url ?? null });
+        if (window.workchime?.onRingAction) return;
         if (document.hasFocus() || !("Notification" in window) || Notification.permission !== "granted") return;
         const n = new Notification(`${displayName(profiles[r.from])} is calling you`, {
           icon: "/asset/AppIcon.svg",
@@ -578,8 +620,16 @@ export function ChatProvider({ session, children }: { session: Session; children
         if (!Array.isArray(payload?.to) || !payload.to.includes(uid)) return;
         setRing((r) => (r && !r.meeting && r.channelId === payload.channelId && r.from === payload.from ? null : r));
       })
+      // This user answered or declined on another device
+      .on("broadcast", { event: "ring-handled" }, ({ payload }) => {
+        if (payload?.to === uid) setRing((r) => (r?.channelId === payload.channelId ? null : r));
+      })
+      // "Leave" pressed on another device for the call running on this one
+      .on("broadcast", { event: "leave-call" }, ({ payload }) => {
+        if (payload?.to === uid && payload.tab === TAB && live.current.huddle) setHuddleRef.current(null);
+      })
       .subscribe((status) => {
-        if (status === "SUBSCRIBED" && live.current.huddle) ch.track({ channel: live.current.huddle });
+        if (status === "SUBSCRIBED" && live.current.huddle) ch.track({ channel: live.current.huddle, tab: TAB, at: joinedAt.current });
       });
     return () => {
       supabase.removeChannel(ch);
@@ -588,12 +638,11 @@ export function ChatProvider({ session, children }: { session: Session; children
 
   useEffect(() => {
     const ch = huddleChannel();
-    if (huddle) ch?.track({ channel: huddle });
-    else ch?.untrack();
+    if (huddle) {
+      joinedAt.current = Date.now();
+      ch?.track({ channel: huddle, tab: TAB, at: joinedAt.current } satisfies HuddleMeta);
+    } else ch?.untrack();
   }, [huddle]);
-
-  // Leaving from a message sent by another tab goes through the full setHuddle (ring cancel and all)
-  const setHuddleRef = useRef<(channelId: string | null) => void>(() => {});
 
   // Cross-tab coordination: one call per browser (see TabMessage)
   useEffect(() => {
@@ -633,11 +682,13 @@ export function ChatProvider({ session, children }: { session: Session; children
     toTabs(huddle ? { type: "joined", tab: TAB, channelId: huddle } : { type: "left", tab: TAB });
   }, [huddle]);
 
-  // The system notification for a call goes away with the call, however it stopped ringing
+  // The system notification for a call goes away with the call, however it stopped ringing,
+  // and so does the desktop app's incoming-call window
   useEffect(() => {
     if (ring) return;
     ringNote.current?.close();
     ringNote.current = null;
+    window.workchime?.ringEnd?.();
   }, [ring]);
 
   useEffect(() => {
@@ -768,9 +819,10 @@ export function ChatProvider({ session, children }: { session: Session; children
           if (huddle === m.channel_id || live.current.elsewhere?.channelId === m.channel_id) continue;
           const where = m.channels?.kind === "dm" ? m.title : `#${m.channels?.name}`;
           setHuddleTitles((t) => ({ ...t, [m.channel_id]: where }));
+          if (live.current.huddles[m.channel_id]?.includes(uid)) continue;
           setRing({ channelId: m.channel_id, from: m.created_by, title: m.title, meeting: m.id });
-          if (!quiet) window.workchime?.ring();
-          if (!canNotify || document.hasFocus()) continue;
+          if (!quiet) window.workchime?.ring({ caller: m.title, where: `Organized by ${displayName(profiles[m.created_by])}`, avatar: null, meeting: true });
+          if (!canNotify || document.hasFocus() || window.workchime?.onRingAction) continue;
           const n = new Notification(`📅 ${m.title} is starting`, { icon: "/asset/AppIcon.svg", body: "Click to join the call", tag: `meeting:${m.id}`, requireInteraction: true });
           n.onclick = () => {
             focusApp();
@@ -820,6 +872,7 @@ export function ChatProvider({ session, children }: { session: Session; children
       if (channelId) setElsewhere(null);
       setHuddleNotice(null);
       setRung({});
+      if (channelId && ring?.channelId === channelId) ringHandled(uid, channelId, true);
       setRing((r) => (r?.channelId === channelId ? null : r));
       // Starting a huddle calls the other people in the conversation, unless it's already running or a meeting there is already calling everyone
       const c = channelId ? channels[channelId] : undefined;
@@ -832,7 +885,7 @@ export function ChatProvider({ session, children }: { session: Session; children
           .eq("channel_id", channelId)
           .then(({ data }) => ringHuddle(channelId, (data ?? []).map((r) => r.user_id).filter((id) => id !== uid)));
     },
-    [uid, huddle, rung, channels, dmMembers, huddles, meetings, ringHuddle, plan],
+    [uid, huddle, rung, ring, channels, dmMembers, huddles, meetings, ringHuddle, plan],
   );
 
   useEffect(() => {
@@ -843,9 +896,12 @@ export function ChatProvider({ session, children }: { session: Session; children
     if (elsewhere) setHuddle(elsewhere.channelId);
   }, [elsewhere, setHuddle]);
 
+  // Another tab of this browser hears it on the tab channel, another device over realtime
   const leaveHuddleElsewhere = useCallback(() => {
-    if (elsewhere) toTabs({ type: "leave", tab: elsewhere.tab });
-  }, [elsewhere]);
+    if (!elsewhere) return;
+    toTabs({ type: "leave", tab: elsewhere.tab });
+    huddleChannel()?.send({ type: "broadcast", event: "leave-call", payload: { to: uid, tab: elsewhere.tab } });
+  }, [elsewhere, uid]);
 
   const inviteToHuddle = useCallback((userIds: string[]) => {
     if (huddle) ringHuddle(huddle, userIds);
@@ -854,8 +910,11 @@ export function ChatProvider({ session, children }: { session: Session; children
   const dismissRing = useCallback(
     (decline = false) => {
       if (decline && ring && ring.from !== uid) huddleChannel()?.send({ type: "broadcast", event: "decline", payload: { to: ring.from, from: uid, channelId: ring.channelId } });
-      // Declining in one tab stops the ringing in the others
-      if (decline && ring) toTabs({ type: "dismiss", channelId: ring.channelId });
+      // Declining in one tab stops the ringing in the others, and on the user's other devices
+      if (decline && ring) {
+        toTabs({ type: "dismiss", channelId: ring.channelId });
+        ringHandled(uid, ring.channelId, false);
+      }
       setRing(null);
     },
     [uid, ring],

@@ -1,7 +1,7 @@
 {
   "name": "workchime-desktop",
   "productName": "Workchime",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "Workchime desktop app",
   "main": "main.js",
   "author": "Workchime",
@@ -21,7 +21,7 @@
     "appId": "app.workchime.desktop",
     "productName": "Workchime",
     "directories": { "output": "dist", "buildResources": "build" },
-    "files": ["main.js", "preload.js", "tray.png"],
+    "files": ["main.js", "preload.js", "picker.html", "picker-preload.js", "ring.html", "ring-preload.js", "tray.png"],
     "protocols": [{ "name": "Workchime", "schemes": ["workchime"] }],
     "win": {
       "target": "nsis",
