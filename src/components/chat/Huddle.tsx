@@ -10,17 +10,9 @@ import { Avatar, Modal, input } from "../ui";
 import { Icon } from "../icons";
 import { useChat, huddleHandoff, RESUME_KEY, type Ring } from "./store";
 
-// Like a Slack huddle, the call gets its own window: an ordinary one, so it can go to any screen,
-// be maximized or go full screen
+// In the desktop app, like a Slack huddle, the call gets its own window: an ordinary one, so it can go
+// to any screen, be maximized or go full screen (desktop/main.js gives it no address bar)
 const POPUP = { width: 520, height: 420 };
-
-// Browsers only let a page open a window shortly after a click (the desktop app always can)
-function canOpenWindow() {
-  const activation = (
-    navigator as Navigator & { userActivation?: { isActive: boolean } }
-  ).userActivation;
-  return !!window.workchime || !activation || activation.isActive;
-}
 
 function openCallWindow(): Window | null {
   // Opens near the top right of the app, from where it can be dragged anywhere
@@ -38,10 +30,13 @@ function openCallWindow(): Window | null {
 }
 
 // Calls back once the window has loaded call.html (and not a page it showed before)
-function whenCallWindowReady(w: Window, ready: () => void) {
+function whenCallWindowReady(w: Window, ready: () => void, failed: () => void) {
   const started = Date.now();
   const t = setInterval(() => {
-    if (w.closed || Date.now() - started > 15_000) return clearInterval(t);
+    if (w.closed || Date.now() - started > 15_000) {
+      clearInterval(t);
+      return failed();
+    }
     try {
       const body = w.document.body;
       if (
@@ -383,6 +378,11 @@ export default function Huddle({
   // A tall screen (a phone held upright) stacks people instead of squeezing them side by side
   const [portrait, setPortrait] = useState(() => window.innerHeight > window.innerWidth);
   const [expanded, setExpanded] = useState(phone);
+  // The call gets its own window only in the desktop app (see the auto-open effect)
+  const [windowed] = useState(() => !!window.workchime && !phone);
+  // While the call window is loading, so the small box doesn't flash up in the app meanwhile.
+  // True from the start when the window is about to open (see the auto-open effect).
+  const [launching, setLaunching] = useState(() => windowed);
   const [focus, setFocus] = useState<string | null>(null);
   const [inviting, setInviting] = useState(false);
   const [unanswered, setUnanswered] = useState(false);
@@ -614,7 +614,7 @@ export default function Huddle({
       // A box in the page can't leave the browser window: dragging it off the edge pops the call
       // out into its own window, which can then go to another screen
       if (
-        !phone &&
+        windowed &&
         (ev.clientX <= 0 ||
         ev.clientY <= 0 ||
         ev.clientX >= window.innerWidth - 1 ||
@@ -668,48 +668,33 @@ export default function Huddle({
   const openWindow = () => {
     if (opening.current) return opening.current.w.focus();
     const w = openCallWindow();
-    if (!w) return;
-    // Closed before it finished loading
-    const gone = setInterval(() => {
-      if (!w.closed) return;
-      clearInterval(gone);
-      if (opening.current?.w === w) opening.current = null;
-    }, 500);
-    const cancel = whenCallWindowReady(w, () => {
-      clearInterval(gone);
-      opening.current = null;
-      dressCallWindow(w, `${CALL} · ${huddleName(channelId)}`);
-      setPopout(w);
-    });
-    opening.current = {
+    if (!w) return setLaunching(false);
+    setLaunching(true);
+    const cancel = whenCallWindowReady(
       w,
-      cancel: () => {
-        cancel();
-        clearInterval(gone);
+      () => {
+        opening.current = null;
+        dressCallWindow(w, `${CALL} · ${huddleName(channelId)}`);
+        setPopout(w);
+        setLaunching(false);
       },
-    };
+      // Closed, or never loaded: the call stays in the app
+      () => {
+        if (opening.current?.w === w) opening.current = null;
+        setLaunching(false);
+      },
+    );
+    opening.current = { w, cancel };
   };
 
-  // Like a Slack huddle, the call opens in its own window by itself. The click that started or joined
-  // the call allows it; after a reload there was no click, so it opens with the next click in the app.
+  // Like Slack: in the desktop app the call opens in its own window by itself, one with no address bar
+  // that can go to any screen. In a browser it stays in the tab, since any window a website opens
+  // gets Chrome's address bar.
   const autoOpened = useRef(false);
-  const waitingForClick = useRef(false);
   useEffect(() => {
-    if (!autoOpened.current) {
-      autoOpened.current = true;
-      // A phone has no windows to move around: there the call fills the app instead (see expanded)
-      if (phone) return;
-      if (canOpenWindow()) openWindow();
-      else waitingForClick.current = true;
-    }
-    if (!waitingForClick.current) return;
-    const onClick = () => {
-      waitingForClick.current = false;
-      openWindow();
-    };
-    window.addEventListener("click", onClick, { once: true, capture: true });
-    return () =>
-      window.removeEventListener("click", onClick, { capture: true });
+    if (autoOpened.current || !windowed) return;
+    autoOpened.current = true;
+    openWindow();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once, as the call opens
   }, []);
 
@@ -1082,7 +1067,7 @@ export default function Huddle({
         onPointerDown={startDrag}
         onDoubleClick={resetPos}
         className="-mx-1 -mt-1 flex cursor-grab touch-none items-center gap-2 rounded-xl px-1 py-1 select-none active:cursor-grabbing"
-        title="Drag to move · drag off the edge to open it in its own window · double-click to reset"
+        title={windowed ? "Drag to move · drag off the edge to open it in its own window · double-click to reset" : "Drag to move · double-click to reset"}
       >
         <Icon name="grip" size={14} className="text-zinc-300" />
         <Icon name="headphones" size={18} className="text-zinc-500" />
@@ -1135,7 +1120,7 @@ export default function Huddle({
 
       {popout ? (
         createPortal(windowView, popout.document.body)
-      ) : expanded ? (
+      ) : launching ? null : expanded ? (
         <div className="tm-fade fixed inset-0 z-50 bg-white pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]">{windowView}</div>
       ) : (
         card
