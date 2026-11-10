@@ -348,9 +348,10 @@ export default function Huddle({
   const [fullscreenSupported] = useState(() => !phone && !!document.fullscreenEnabled);
   // A tall screen (a phone held upright) stacks people instead of squeezing them side by side
   const [portrait, setPortrait] = useState(() => window.innerHeight > window.innerWidth);
-  const [expanded, setExpanded] = useState(phone);
   // The call gets its own window only in the desktop app (see the auto-open effect)
   const [windowed] = useState(() => !!window.workchime && !phone);
+  // Everywhere else the call opens on the full call screen; "Chats" shrinks it to the floating panel
+  const [expanded, setExpanded] = useState(!windowed);
   // While the call window is loading, so the small box doesn't flash up in the app meanwhile.
   // True from the start when the window is about to open (see the auto-open effect).
   const [launching, setLaunching] = useState(() => windowed);
