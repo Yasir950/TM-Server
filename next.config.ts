@@ -8,6 +8,10 @@ const nextConfig: NextConfig = {
   async redirects() {
     return [{ source: "/home", destination: "/", permanent: true }];
   },
+  // The call's own window (Huddle.tsx openCallWindow) shows /call rather than /call.html
+  async rewrites() {
+    return [{ source: "/call", destination: "/call.html" }];
+  },
   turbopack: {
     rules: {
       "*.css": {
