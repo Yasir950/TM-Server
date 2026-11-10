@@ -218,35 +218,6 @@ function Sound({ stream }: { stream: MediaStream }) {
   return <audio ref={ref} autoPlay />;
 }
 
-function Face({ p, profile }: { p: Person; profile?: Profile }) {
-  const speaking = useSpeaking(p.streams[MIC], !p.state.muted);
-  return (
-    <span className={`relative rounded-[30%] ring-2 ring-offset-2 transition ${speaking ? "ring-tm-green" : p.state.hand ? "ring-amber-400" : "ring-transparent"}`} title={displayName(profile)}>
-      <Avatar profile={profile} size={44} />
-      {p.state.hand && (
-        <span className="absolute -top-2 -left-2 flex h-5 w-5 items-center justify-center rounded-full bg-amber-400 text-white" title="Hand raised">
-          <Icon name="hand" size={11} />
-        </span>
-      )}
-      {p.state.muted && (
-        <span className="absolute -right-2 -bottom-2 flex h-5 w-5 items-center justify-center rounded-full border border-tm-line bg-white text-zinc-600">
-          <Icon name="micOff" size={10} />
-        </span>
-      )}
-      {p.state.sharing && (
-        <span className="absolute -top-2 -right-2 flex h-5 w-5 items-center justify-center rounded-full border border-tm-line bg-white text-zinc-600">
-          <Icon name="monitor" size={10} />
-        </span>
-      )}
-      {p.reaction && (
-        <span key={p.reaction.id} className="tm-rise pointer-events-none absolute inset-x-0 -top-8 text-center text-2xl leading-none">
-          {p.reaction.emoji}
-        </span>
-      )}
-    </span>
-  );
-}
-
 // Call window: a person filling their grid cell, avatar centered with a glow while they talk
 function WindowTile({
   p,
@@ -820,7 +791,8 @@ export default function Huddle({
       ? "No answer"
       : `${people.length} ${people.length === 1 ? "person" : "people"}`;
 
-  const controls = (dark: boolean) => (
+  // mini: the floating panel, whose header holds expand, with an icon-only Leave
+  const controls = (mini: boolean, dark = false) => (
     <div className="flex flex-wrap items-center justify-center gap-1.5">
       <Btn dark={dark} on={mine.muted} disabled={!local[MIC]} onClick={toggleMute} title={mine.muted ? "Unmute" : "Mute"}>
         <Icon name={mine.muted ? "micOff" : "mic"} />
@@ -854,7 +826,7 @@ export default function Huddle({
         <Icon name="userPlus" />
       </Btn>
       {/* A phone goes back to the chats with the arrow at the top of the call screen instead */}
-      {!popout && !(phone && expanded) && (
+      {!popout && !mini && !(phone && expanded) && (
         <Btn
           dark={dark}
           onClick={toggleExpanded}
@@ -875,7 +847,7 @@ export default function Huddle({
       )}
       <Btn danger onClick={onLeave} title={`Leave ${call}`}>
         <Icon name="phoneOff" size={16} />
-        {!phone && "Leave"}
+        {!phone && !mini && "Leave"}
       </Btn>
     </div>
   );
@@ -887,12 +859,18 @@ export default function Huddle({
   const callee = dm
     ? profiles[(dmMembers[channelId] ?? []).find((id) => id !== me.id) ?? ""]
     : undefined;
-  const windowView = (
+  // mini: the small panel floating over the app (Slack's huddle panel), dragged by its header
+  const screen = (mini: boolean) => (
     // Framed in the app's colors: a green-to-blue header band and a green border round the window
-    <div className="flex h-full flex-col border-[3px] border-tm-green bg-white text-zinc-900">
-      <header className="flex items-center gap-2.5 bg-linear-to-r from-tm-green to-tm-blue px-3.5 py-2.5 text-white">
-        {/* Back to the chats, with the call carrying on in the small box */}
-        {!popout && (
+    <div className={`flex h-full flex-col bg-white text-zinc-900 ${mini ? "" : "border-[3px] border-tm-green"}`}>
+      <header
+        onPointerDown={mini ? startDrag : undefined}
+        onDoubleClick={mini ? resetPos : undefined}
+        title={mini ? (windowed ? "Drag to move · drag off the edge to open it in its own window · double-click to reset" : "Drag to move · double-click to reset") : undefined}
+        className={`flex items-center bg-linear-to-r from-tm-green to-tm-blue text-white ${mini ? "cursor-grab touch-none gap-2 px-3 py-2 select-none active:cursor-grabbing" : "gap-2.5 px-3.5 py-2.5"}`}
+      >
+        {/* Back to the chats, with the call carrying on in the small panel */}
+        {!popout && !mini && (
           <button
             onClick={toggleExpanded}
             title="Back to chats"
@@ -926,10 +904,21 @@ export default function Huddle({
             status
           )}
         </span>
+        {mini && (
+          <button
+            onClick={toggleExpanded}
+            onPointerDown={(e) => e.stopPropagation()}
+            title="Expand"
+            aria-label="Expand"
+            className="-mr-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-white transition hover:bg-white/20 active:scale-95"
+          >
+            <Icon name="maximize" size={15} />
+          </button>
+        )}
       </header>
 
       <div
-        className="flex min-h-0 flex-1 flex-col gap-3 p-3"
+        className={`flex min-h-0 flex-1 flex-col ${mini ? "gap-2 p-2.5" : "gap-3 p-3"}`}
         style={{
           background:
             "linear-gradient(180deg, #f0fdf4 0%, #ffffff 35%, #eff6ff 100%)",
@@ -937,16 +926,18 @@ export default function Huddle({
       >
         {main ? (
           // Screen on top with people in a strip below on a phone; side by side when there's room
-          <div className="grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)_auto] gap-2 sm:grid-cols-[minmax(0,1fr)_11rem] sm:grid-rows-1 sm:gap-3">
+          <div className={`grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)_auto] gap-2 ${mini ? "" : "sm:grid-cols-[minmax(0,1fr)_11rem] sm:grid-rows-1 sm:gap-3"}`}>
             {main.self ? (
               // Your own screen shown back to you just mirrors itself endlessly: say so instead
-              <div className="flex min-h-0 min-w-0 flex-col items-center justify-center gap-2 rounded-2xl bg-white/70 p-6 text-center ring-2 ring-tm-blue/20">
-                <span className="mb-1 flex h-14 w-14 items-center justify-center rounded-2xl bg-linear-to-br from-tm-green to-tm-blue text-white shadow-md">
-                  <Icon name="monitorUp" size={26} />
-                </span>
-                <div className="font-semibold">You&apos;re sharing your screen</div>
-                <div className="text-sm text-zinc-500">Everyone in the {call} can see it</div>
-                <button onClick={stopShare} className="mt-2 rounded-xl bg-red-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-red-600 active:scale-95">
+              <div className={`flex min-h-0 min-w-0 flex-col items-center justify-center rounded-2xl bg-white/70 text-center ring-2 ring-tm-blue/20 ${mini ? "gap-1 p-2" : "gap-2 p-6"}`}>
+                {!mini && (
+                  <span className="mb-1 flex h-14 w-14 items-center justify-center rounded-2xl bg-linear-to-br from-tm-green to-tm-blue text-white shadow-md">
+                    <Icon name="monitorUp" size={26} />
+                  </span>
+                )}
+                <div className={`font-semibold ${mini ? "text-sm" : ""}`}>You&apos;re sharing your screen</div>
+                {!mini && <div className="text-sm text-zinc-500">Everyone in the {call} can see it</div>}
+                <button onClick={stopShare} className={`rounded-xl bg-red-500 font-semibold text-white transition hover:bg-red-600 active:scale-95 ${mini ? "mt-1 px-3 py-1 text-xs" : "mt-2 px-4 py-2 text-sm"}`}>
                   Stop sharing
                 </button>
               </div>
@@ -974,38 +965,41 @@ export default function Huddle({
                 )}
               </div>
             )}
-            <div className="flex min-h-0 gap-2 overflow-x-auto sm:flex-col sm:overflow-x-hidden sm:overflow-y-auto">
+            <div className={`flex min-h-0 gap-2 overflow-x-auto ${mini ? "" : "sm:flex-col sm:overflow-x-hidden sm:overflow-y-auto"}`}>
               {people.map((p) => (
-                <div key={p.key} className="aspect-video w-28 shrink-0 sm:w-full">
+                <div key={p.key} className={`aspect-video shrink-0 ${mini ? "w-20" : "w-28 sm:w-full"}`}>
                   <WindowTile p={p} profile={profiles[p.user]} compact />
                 </div>
               ))}
             </div>
           </div>
         ) : alone ? (
-          <div className="relative flex min-h-0 flex-1 flex-col items-center justify-center gap-5 rounded-2xl">
+          <div className={`relative flex min-h-0 flex-1 flex-col items-center justify-center rounded-2xl ${mini ? "gap-3" : "gap-5"}`}>
             <div className="relative">
               {calling && (
                 <span
-                  className="absolute -inset-3 animate-ping rounded-[34%] bg-tm-green/25"
+                  className={`absolute animate-ping rounded-[34%] bg-tm-green/25 ${mini ? "-inset-2" : "-inset-3"}`}
                   style={{ animationDuration: "1.8s" }}
                 />
               )}
               {callee ? (
-                <span className="relative block rounded-[30%] ring-4 ring-tm-green/40 ring-offset-4">
-                  <Avatar profile={callee} size={104} />
+                <span className={`relative block rounded-[30%] ring-tm-green/40 ${mini ? "ring-[3px] ring-offset-2" : "ring-4 ring-offset-4"}`}>
+                  <Avatar profile={callee} size={mini ? 60 : 104} />
                 </span>
               ) : (
-                <span className="relative flex h-[104px] w-[104px] items-center justify-center rounded-[30%] bg-tm-blue/10 ring-4 ring-tm-green/40 ring-offset-4">
-                  <Icon name="headphones" size={44} className="text-tm-blue" />
+                <span
+                  className={`relative flex items-center justify-center rounded-[30%] bg-tm-blue/10 ring-tm-green/40 ${mini ? "ring-[3px] ring-offset-2" : "ring-4 ring-offset-4"}`}
+                  style={{ width: mini ? 60 : 104, height: mini ? 60 : 104 }}
+                >
+                  <Icon name="headphones" size={mini ? 26 : 44} className="text-tm-blue" />
                 </span>
               )}
             </div>
             <div className="text-center">
-              <div className="text-lg font-semibold">
+              <div className={`font-semibold ${mini ? "text-sm" : "text-lg"}`}>
                 {callee ? displayName(callee) : title}
               </div>
-              <div className="mt-1 text-sm text-zinc-500">
+              <div className={`mt-0.5 text-zinc-500 ${mini ? "text-xs" : "text-sm"}`}>
                 {calling
                   ? "Calling…"
                   : unanswered
@@ -1015,7 +1009,7 @@ export default function Huddle({
             </div>
             {/* Your camera, while there's no one else to show */}
             {mine.camera && local[CAMERA] && (
-              <div className="absolute right-0 bottom-0 aspect-video w-36 overflow-hidden rounded-xl shadow-md ring-1 ring-zinc-200">
+              <div className={`absolute right-0 bottom-0 aspect-video overflow-hidden rounded-xl shadow-md ring-1 ring-zinc-200 ${mini ? "w-20" : "w-36"}`}>
                 <Video stream={local[CAMERA]!} mirror />
               </div>
             )}
@@ -1033,7 +1027,7 @@ export default function Huddle({
                 key={p.key}
                 p={p}
                 profile={profiles[p.user]}
-                compact={people.length > 2}
+                compact={mini || people.length > 2}
               />
             ))}
           </div>
@@ -1041,75 +1035,29 @@ export default function Huddle({
 
         {error && <p className="text-center text-xs text-amber-600">{error}</p>}
         <div className="flex justify-center">
-          <div className="rounded-2xl bg-white p-1.5 shadow-md ring-2 ring-tm-green/35">
-            {controls(false)}
+          <div className={`rounded-2xl bg-white shadow-md ring-2 ring-tm-green/35 ${mini ? "p-1" : "p-1.5"}`}>
+            {controls(mini)}
           </div>
         </div>
       </div>
     </div>
   );
 
-  // The small box floating over the app
+  // The small panel floating over the app, like Slack's huddle panel: the same design, scaled down
   const card = (
     <div
       ref={box}
-      className={`tm-pop tm-float fixed z-40 w-[26rem] max-w-[calc(100vw-16px)] rounded-2xl bg-white p-3.5 ${pos ? "" : "bottom-4 left-4"}`}
+      className={`tm-pop fixed z-40 h-[20rem] w-[24rem] max-w-[calc(100vw-16px)] overflow-hidden rounded-2xl shadow-[0_12px_40px_rgba(15,23,42,0.22)] ring-2 ring-tm-green ${pos ? "" : "bottom-4 left-4"}`}
       style={
         pos
           ? {
-              left: `max(8px, min(${pos.x}px, calc(100vw - 424px)))`,
-              top: `max(8px, min(${pos.y}px, calc(100vh - 190px)))`,
+              left: `max(8px, min(${pos.x}px, calc(100vw - 392px)))`,
+              top: `max(8px, min(${pos.y}px, calc(100vh - 328px)))`,
             }
           : undefined
       }
     >
-      <div
-        onPointerDown={startDrag}
-        onDoubleClick={resetPos}
-        className="-mx-1 -mt-1 flex cursor-grab touch-none items-center gap-2 rounded-xl px-1 py-1 select-none active:cursor-grabbing"
-        title={windowed ? "Drag to move · drag off the edge to open it in its own window · double-click to reset" : "Drag to move · double-click to reset"}
-      >
-        <Icon name="grip" size={14} className="text-zinc-300" />
-        <Icon name="headphones" size={18} className="text-zinc-500" />
-        <span className="min-w-0 flex-1 truncate text-sm">
-          <span className="font-semibold">{CALL}</span>
-          <span className="text-zinc-500"> · {title}</span>
-        </span>
-        <span className="text-xs text-zinc-400">{people.length}</span>
-      </div>
-      <div className="my-3.5 flex flex-wrap items-center gap-3">
-        {people.map((p) => (
-          <Face key={p.key} p={p} profile={profiles[p.user]} />
-        ))}
-        {calling && (
-          <span className="tm-fade ml-1 text-xs text-zinc-400">Calling…</span>
-        )}
-        {unanswered && people.length === 1 && (
-          <span className="ml-1 text-xs text-zinc-400">No answer</span>
-        )}
-      </div>
-      {othersSharing.length > 0 && (
-        <button
-          onClick={toggleExpanded}
-          className="mb-2 flex w-full items-center gap-2 rounded-xl border border-tm-line px-3 py-1.5 text-left text-xs text-zinc-600 transition hover:bg-tm-surface"
-        >
-          <Icon name="monitor" size={14} />
-          {othersSharing
-            .map((p) => displayName(profiles[p.user]))
-            .join(", ")}{" "}
-          {othersSharing.length > 1 ? "are" : "is"} sharing · View
-        </button>
-      )}
-      {mine.sharing && (
-        <p className="mb-2 text-xs text-zinc-500">
-          You are sharing your screen
-        </p>
-      )}
-      {error && <p className="mb-2 text-xs text-amber-600">{error}</p>}
-      {huddleNotice && (
-        <p className="mb-2 text-xs text-zinc-500">{huddleNotice}</p>
-      )}
-      {controls(false)}
+      {screen(true)}
     </div>
   );
 
@@ -1119,9 +1067,9 @@ export default function Huddle({
       {Object.entries(remotes).map(([k, s]) => s[MIC] && <Sound key={k} stream={s[MIC]} />)}
 
       {popout ? (
-        createPortal(windowView, popout.document.body)
+        createPortal(screen(false), popout.document.body)
       ) : launching ? null : expanded ? (
-        <div className="tm-fade fixed inset-0 z-50 bg-white pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]">{windowView}</div>
+        <div className="tm-fade fixed inset-0 z-50 bg-white pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]">{screen(false)}</div>
       ) : (
         card
       )}
