@@ -177,11 +177,11 @@ function createWindow() {
 
   // Links leaving the app open in the default browser
   win.webContents.setWindowOpenHandler(({ url, frameName }) => {
-    // The call popped out of the app (Huddle.tsx openCallWindow): a small window that stays on top
-    if (frameName === "tm-call" && (url === "" || url === "about:blank"))
+    // The call in its own window (Huddle.tsx openCallWindow), like a Slack huddle window
+    if (frameName === "tm-call" && new URL(url).origin === ORIGIN)
       return {
         action: "allow",
-        overrideBrowserWindowOptions: { width: 440, height: 240, minWidth: 320, minHeight: 180, alwaysOnTop: true, autoHideMenuBar: true, title: "Workchime call", backgroundColor: "#ffffff" },
+        overrideBrowserWindowOptions: { width: 520, height: 420, minWidth: 360, minHeight: 300, autoHideMenuBar: true, title: "Workchime call", backgroundColor: "#ffffff" },
       };
     if (new URL(url).origin === ORIGIN) return { action: "allow" };
     shell.openExternal(url);

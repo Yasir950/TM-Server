@@ -10,28 +10,69 @@ import { Avatar, Modal, input } from "../ui";
 import { Icon } from "../icons";
 import { useChat, huddleHandoff, RESUME_KEY, type Ring } from "./store";
 
-// The call can leave the browser window for its own one, which can go to another screen.
-// Document Picture-in-Picture gives an always-on-top window (Chrome, Edge); elsewhere a plain popup.
-type PipApi = { requestWindow: (o: { width: number; height: number }) => Promise<Window> };
-const POPUP = { width: 440, height: 240 };
+// Like a Slack huddle, the call gets its own window: an ordinary one, so it can go to any screen,
+// be maximized or go full screen
+const POPUP = { width: 520, height: 420 };
 
-async function openCallWindow(): Promise<Window | null> {
-  const pip = (window as unknown as { documentPictureInPicture?: PipApi }).documentPictureInPicture;
-  if (pip) {
-    try {
-      return await pip.requestWindow(POPUP);
-    } catch {}
-  }
-  return window.open("", "tm-call", `popup,width=${POPUP.width},height=${POPUP.height}`);
+// Browsers only let a page open a window shortly after a click (the desktop app always can)
+function canOpenWindow() {
+  const activation = (
+    navigator as Navigator & { userActivation?: { isActive: boolean } }
+  ).userActivation;
+  return !!window.workchime || !activation || activation.isActive;
 }
 
-// The new window starts blank: give it this page's stylesheets and root classes (fonts, theme)
+function openCallWindow(): Window | null {
+  // Opens near the top right of the app, from where it can be dragged anywhere
+  const left = Math.max(
+    0,
+    Math.round(window.screenX + window.outerWidth - POPUP.width - 32),
+  );
+  const top = Math.round(window.screenY + 96);
+  // A page of the app's own (public/call.html), so the window shows the app's address, not about:blank
+  return window.open(
+    "/call.html",
+    "tm-call",
+    `popup,width=${POPUP.width},height=${POPUP.height},left=${left},top=${top}`,
+  );
+}
+
+// Calls back once the window has loaded call.html (and not a page it showed before)
+function whenCallWindowReady(w: Window, ready: () => void) {
+  const started = Date.now();
+  const t = setInterval(() => {
+    if (w.closed || Date.now() - started > 15_000) return clearInterval(t);
+    try {
+      const body = w.document.body;
+      if (
+        w.document.readyState !== "complete" ||
+        !body?.hasAttribute("data-call-window") ||
+        body.hasAttribute("data-dressed")
+      )
+        return;
+    } catch {
+      return;
+    }
+    clearInterval(t);
+    ready();
+  }, 50);
+  return () => clearInterval(t);
+}
+
+// The window's page is bare: give it this page's stylesheets and root classes (fonts, theme)
 function dressCallWindow(w: Window, title: string) {
   const d = w.document;
-  d.title = title;
   d.head.replaceChildren();
   d.body.replaceChildren();
-  for (const el of document.querySelectorAll<HTMLElement>('link[rel="stylesheet"], style')) {
+  d.body.setAttribute("data-dressed", "");
+  d.title = title;
+  const icon = d.createElement("link");
+  icon.rel = "icon";
+  icon.href = "/asset/AppIcon.svg";
+  d.head.append(icon);
+  for (const el of document.querySelectorAll<HTMLElement>(
+    'link[rel="stylesheet"], style',
+  )) {
     if (el instanceof HTMLLinkElement) {
       const link = d.createElement("link");
       link.rel = "stylesheet";
@@ -42,7 +83,8 @@ function dressCallWindow(w: Window, title: string) {
   d.documentElement.className = document.documentElement.className;
   d.documentElement.style.cssText = `${document.documentElement.style.cssText};height:100%`;
   d.body.className = document.body.className;
-  d.body.style.cssText = "margin:0;height:100%;overflow:hidden";
+  d.body.style.cssText =
+    "margin:0;height:100%;overflow:hidden;background:#fff;color:#18181b";
 }
 
 // Mesh WebRTC: every participant connects to every other; Supabase Realtime carries the signaling.
@@ -210,12 +252,104 @@ function Face({ p, profile }: { p: Person; profile?: Profile }) {
   );
 }
 
-function Tile({ p, profile, small }: { p: Person; profile?: Profile; small?: boolean }) {
+// Call window: a person filling their grid cell, avatar centered with a glow while they talk
+function WindowTile({
+  p,
+  profile,
+  compact,
+}: {
+  p: Person;
+  profile?: Profile;
+  compact?: boolean;
+}) {
   const speaking = useSpeaking(p.streams[MIC], !p.state.muted);
   const cam = p.state.camera ? p.streams[CAMERA] : null;
   return (
-    <div className={`relative flex aspect-video shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-slate-800 ring-2 transition ${speaking ? "ring-tm-green" : p.state.hand ? "ring-amber-400" : "ring-transparent"}`}>
-      {cam ? <Video stream={cam} mirror={p.self} /> : <Avatar profile={profile} size={small ? 44 : 80} />}
+    <div
+      className={`relative flex h-full min-h-0 w-full items-center justify-center overflow-hidden rounded-2xl ring-2 transition ${speaking ? "ring-tm-green" : p.state.hand ? "ring-amber-400" : "ring-tm-blue/25"}`}
+      style={{
+        background: "linear-gradient(160deg, #ecfdf5 0%, #eff6ff 100%)",
+      }}
+    >
+      {cam ? (
+        <Video stream={cam} mirror={p.self} />
+      ) : (
+        <span
+          className={`rounded-[30%] transition-shadow duration-300 ${speaking ? "shadow-[0_0_0_6px_rgba(34,197,94,0.35)]" : ""}`}
+        >
+          <Avatar profile={profile} size={compact ? 56 : 96} />
+        </span>
+      )}
+      {p.state.hand && (
+        <span className="absolute top-2.5 left-2.5 flex items-center gap-1 rounded-full bg-amber-400 px-2 py-0.5 text-xs font-semibold text-slate-900">
+          <Icon name="hand" size={12} />
+          {!compact && "Hand raised"}
+        </span>
+      )}
+      {p.reaction && (
+        <span
+          key={p.reaction.id}
+          className={`tm-rise pointer-events-none absolute inset-x-0 bottom-10 text-center leading-none ${compact ? "text-3xl" : "text-5xl"}`}
+        >
+          {p.reaction.emoji}
+        </span>
+      )}
+      <span
+        className={`absolute bottom-2.5 left-2.5 flex max-w-[85%] items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium shadow-sm backdrop-blur ${cam ? "bg-black/45 text-white" : "bg-white/90 text-zinc-800 ring-1 ring-zinc-200/80"}`}
+      >
+        {p.state.muted && (
+          <Icon name="micOff" size={12} className="text-red-500" />
+        )}
+        <span className="truncate">
+          {displayName(profile)}
+          {p.self && <span className="opacity-60"> (you)</span>}
+        </span>
+      </span>
+    </div>
+  );
+}
+
+// m:ss (or h:mm:ss) since the call connected, ticking
+function Elapsed({ since }: { since: number }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
+  const s = Math.max(0, Math.floor((now - since) / 1000));
+  const h = Math.floor(s / 3600);
+  const mm = String(Math.floor((s % 3600) / 60)).padStart(h ? 2 : 1, "0");
+  const ss = String(s % 60).padStart(2, "0");
+  return (
+    <span className="tabular-nums">
+      {h ? `${h}:${mm}:${ss}` : `${mm}:${ss}`}
+    </span>
+  );
+}
+
+// fill: takes the whole grid cell (the call window) instead of a 16:9 box
+function Tile({
+  p,
+  profile,
+  small,
+  fill,
+}: {
+  p: Person;
+  profile?: Profile;
+  small?: boolean;
+  fill?: boolean;
+}) {
+  const speaking = useSpeaking(p.streams[MIC], !p.state.muted);
+  const cam = p.state.camera ? p.streams[CAMERA] : null;
+  return (
+    <div
+      className={`relative flex ${fill ? "h-full min-h-0 w-full" : "aspect-video shrink-0"} items-center justify-center overflow-hidden rounded-2xl bg-slate-800 ring-2 transition ${speaking ? "ring-tm-green" : p.state.hand ? "ring-amber-400" : "ring-transparent"}`}
+    >
+      {cam ? (
+        <Video stream={cam} mirror={p.self} />
+      ) : (
+        <Avatar profile={profile} size={small ? 44 : 80} />
+      )}
       {p.state.hand && (
         <span className="absolute top-2 left-2 flex items-center gap-1 rounded-lg bg-amber-400 px-2 py-0.5 text-xs font-semibold text-slate-900">
           <Icon name="hand" size={12} />
@@ -240,7 +374,7 @@ function Tile({ p, profile, small }: { p: Person; profile?: Profile; small?: boo
 
 function Btn({ dark, on, danger, disabled, title, onClick, children }: { dark?: boolean; on?: boolean; danger?: boolean; disabled?: boolean; title: string; onClick: () => void; children: React.ReactNode }) {
   const tone = danger
-    ? "bg-red-500 px-3 font-semibold text-white hover:bg-red-600"
+    ? "bg-red-500 px-3.5 font-semibold text-white hover:bg-red-600"
     : on
       ? dark ? "bg-white text-slate-900" : "bg-zinc-800 text-white"
       : dark ? "bg-white/10 hover:bg-white/20" : "border border-tm-line text-zinc-600 hover:bg-tm-surface";
@@ -251,8 +385,24 @@ function Btn({ dark, on, danger, disabled, title, onClick, children }: { dark?: 
   );
 }
 
-export default function Huddle({ channelId, onLeave }: { channelId: string; onLeave: () => void }) {
-  const { me, profiles, channels, huddleName, huddleNotice, huddleResume } = useChat();
+export default function Huddle({
+  channelId,
+  onLeave,
+}: {
+  channelId: string;
+  onLeave: () => void;
+}) {
+  const {
+    me,
+    profiles,
+    channels,
+    dmMembers,
+    huddleName,
+    huddleNotice,
+    huddleResume,
+  } = useChat();
+  // When someone else first joined, for the call timer
+  const [connectedAt, setConnectedAt] = useState<number | null>(null);
   // Rejoining after a reload: keep the mute, and don't play ringback as if calling anew
   const [resumed] = useState(() => (huddleResume?.channelId === channelId ? huddleResume : null));
   const [present, setPresent] = useState<Record<string, State>>({});
@@ -260,6 +410,7 @@ export default function Huddle({ channelId, onLeave }: { channelId: string; onLe
   const [mine, setMine] = useState<State>({ muted: !!resumed?.muted, sharing: false, camera: false, hand: false });
   // The separate call window, while the call is popped out of the app
   const [popout, setPopout] = useState<Window | null>(null);
+  const [fullscreen, setFullscreen] = useState(false);
   const [reactions, setReactions] = useState<Record<string, Reaction>>({});
   const [picking, setPicking] = useState(false);
   const picker = useRef<HTMLDivElement>(null);
@@ -394,6 +545,7 @@ export default function Huddle({ channelId, onLeave }: { channelId: string; onLe
         }
         if (attended.size > before) ch.track({ ...state.current, since, people: [...attended] });
         setPresent(others);
+        if (Object.keys(others).length) setConnectedAt((t) => t ?? Date.now());
         const keys = Object.keys(others);
         if (keys.some((k) => !seen.has(k))) joinSound();
         else if ([...seen].some((k) => !others[k])) leaveSound();
@@ -476,18 +628,35 @@ export default function Huddle({ channelId, onLeave }: { channelId: string; onLe
     const close = (e: PointerEvent) => {
       if (!picker.current?.contains(e.target as Node)) setPicking(false);
     };
-    window.addEventListener("pointerdown", close);
-    return () => window.removeEventListener("pointerdown", close);
-  }, [picking]);
+    const win = popout ?? window;
+    win.addEventListener("pointerdown", close);
+    return () => win.removeEventListener("pointerdown", close);
+  }, [picking, popout]);
 
   const startDrag = (e: React.PointerEvent) => {
     if (e.button !== 0 || !box.current) return;
     e.preventDefault();
+    // Captured, so the drag keeps reporting the pointer after it leaves the browser window
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {}
     const rect = box.current.getBoundingClientRect();
     const dx = e.clientX - rect.left;
     const dy = e.clientY - rect.top;
     let last: { x: number; y: number } | null = null;
     const move = (ev: PointerEvent) => {
+      // A box in the page can't leave the browser window: dragging it off the edge pops the call
+      // out into its own window, which can then go to another screen
+      if (
+        ev.clientX <= 0 ||
+        ev.clientY <= 0 ||
+        ev.clientX >= window.innerWidth - 1 ||
+        ev.clientY >= window.innerHeight - 1
+      ) {
+        up();
+        openWindow();
+        return;
+      }
       last = {
         x: Math.round(Math.min(Math.max(8, ev.clientX - dx), window.innerWidth - rect.width - 8)),
         y: Math.round(Math.min(Math.max(8, ev.clientY - dy), window.innerHeight - rect.height - 8)),
@@ -512,34 +681,101 @@ export default function Huddle({ channelId, onLeave }: { channelId: string; onLe
     } catch {}
   };
 
-  // Moves the call into its own window, which can be dragged to another screen; again brings it back
-  const popOut = async () => {
-    if (popout) return popout.close();
-    const w = await openCallWindow();
-    if (!w) return setError("Allow pop-ups for this site to move the call into its own window.");
-    dressCallWindow(w, `${CALL} · ${huddleName(channelId)}`);
-    setPopout(w);
+  // The window being opened, until its page has loaded; closed with the call if it ends first.
+  // Checked a moment after unmount, since React's development double mount unmounts and remounts at once.
+  const opening = useRef<{ w: Window; cancel: () => void } | null>(null);
+  const mounted = useRef(false);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      setTimeout(() => {
+        if (mounted.current) return;
+        opening.current?.cancel();
+        opening.current?.w.close();
+        opening.current = null;
+      }, 0);
+    };
+  }, []);
+
+  const openWindow = () => {
+    if (opening.current) return opening.current.w.focus();
+    const w = openCallWindow();
+    if (!w) return;
+    // Closed before it finished loading
+    const gone = setInterval(() => {
+      if (!w.closed) return;
+      clearInterval(gone);
+      if (opening.current?.w === w) opening.current = null;
+    }, 500);
+    const cancel = whenCallWindowReady(w, () => {
+      clearInterval(gone);
+      opening.current = null;
+      dressCallWindow(w, `${CALL} · ${huddleName(channelId)}`);
+      setPopout(w);
+    });
+    opening.current = {
+      w,
+      cancel: () => {
+        cancel();
+        clearInterval(gone);
+      },
+    };
   };
+
+  // Like a Slack huddle, the call opens in its own window by itself. The click that started or joined
+  // the call allows it; after a reload there was no click, so it opens with the next click in the app.
+  const autoOpened = useRef(false);
+  const waitingForClick = useRef(false);
+  useEffect(() => {
+    if (!autoOpened.current) {
+      autoOpened.current = true;
+      if (canOpenWindow()) openWindow();
+      else waitingForClick.current = true;
+    }
+    if (!waitingForClick.current) return;
+    const onClick = () => {
+      waitingForClick.current = false;
+      openWindow();
+    };
+    window.addEventListener("click", onClick, { once: true, capture: true });
+    return () =>
+      window.removeEventListener("click", onClick, { capture: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once, as the call opens
+  }, []);
 
   // However the window closes (its close button, popping back in, the call ending), the call comes back
   useEffect(() => {
     if (!popout) return;
     const back = () => setPopout(null);
+    const fs = () => setFullscreen(!!popout.document.fullscreenElement);
     popout.addEventListener("pagehide", back);
+    popout.document.addEventListener("fullscreenchange", fs);
     const t = setInterval(() => popout.closed && back(), 500);
     return () => {
       clearInterval(t);
       popout.removeEventListener("pagehide", back);
+      popout.document.removeEventListener("fullscreenchange", fs);
       popout.close();
     };
   }, [popout]);
 
+  // Full screen for the call window, or for the expanded call in the app
+  useEffect(() => {
+    const fs = () => setFullscreen(!!document.fullscreenElement);
+    document.addEventListener("fullscreenchange", fs);
+    return () => document.removeEventListener("fullscreenchange", fs);
+  }, []);
+  const toggleFullscreen = () => {
+    const d = (popout ?? window).document;
+    if (d.fullscreenElement) d.exitFullscreen().catch(() => {});
+    else d.documentElement.requestFullscreen().catch(() => {});
+  };
+
   const toggleExpanded = () => {
-    const next = !expanded;
-    setExpanded(next);
-    try {
-      popout?.resizeTo(next ? 960 : POPUP.width, next ? 620 : POPUP.height);
-    } catch {}
+    if (expanded && document.fullscreenElement)
+      document.exitFullscreen().catch(() => {});
+    setExpanded(!expanded);
   };
 
   const publish = (patch: Partial<State>) => {
@@ -577,7 +813,10 @@ export default function Huddle({ channelId, onLeave }: { channelId: string; onLe
   const share = async () => {
     if (tracks.current[SCREEN]) return stopShare();
     try {
-      const s = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: { ideal: 15, max: 30 } }, audio: false });
+      // Asked from the window that was clicked, since the browser requires a click there
+      const s = await (popout ?? window).navigator.mediaDevices.getDisplayMedia(
+        { video: { frameRate: { ideal: 15, max: 30 } }, audio: false },
+      );
       const t = s.getVideoTracks()[0];
       t.contentHint = "detail";
       t.onended = stopShare;
@@ -609,6 +848,12 @@ export default function Huddle({ channelId, onLeave }: { channelId: string; onLe
   const othersSharing = screens.filter((p) => !p.self);
   const title = huddleName(channelId);
   const cols = people.length === 1 ? 1 : people.length <= 4 ? 2 : 3;
+  const rows = Math.ceil(people.length / cols);
+  const status = calling
+    ? "Calling…"
+    : unanswered && people.length === 1
+      ? "No answer"
+      : `${people.length} ${people.length === 1 ? "person" : "people"}`;
 
   const controls = (dark: boolean) => (
     <div className="flex flex-wrap items-center gap-1.5">
@@ -641,12 +886,25 @@ export default function Huddle({ channelId, onLeave }: { channelId: string; onLe
       <Btn dark={dark} onClick={() => setInviting(true)} title="Add people">
         <Icon name="userPlus" />
       </Btn>
-      <Btn dark={dark} onClick={toggleExpanded} title={expanded ? "Minimize" : "Expand"}>
-        <Icon name={expanded ? "minimize" : "maximize"} />
-      </Btn>
-      <Btn dark={dark} on={!!popout} onClick={popOut} title={popout ? "Back into the app" : "Pop out into its own window"}>
-        <Icon name={popout ? "popIn" : "popOut"} />
-      </Btn>
+      {!popout && (
+        <Btn
+          dark={dark}
+          onClick={toggleExpanded}
+          title={expanded ? "Minimize" : "Expand"}
+        >
+          <Icon name={expanded ? "minimize" : "maximize"} />
+        </Btn>
+      )}
+      {(popout || expanded) && (
+        <Btn
+          dark={dark}
+          on={fullscreen}
+          onClick={toggleFullscreen}
+          title={fullscreen ? "Exit full screen" : "Full screen"}
+        >
+          <Icon name={fullscreen ? "fullscreenExit" : "fullscreen"} />
+        </Btn>
+      )}
       <Btn danger onClick={onLeave} title={`Leave ${call}`}>
         <Icon name="phoneOff" size={16} />
         Leave
@@ -654,108 +912,310 @@ export default function Huddle({ channelId, onLeave }: { channelId: string; onLe
     </div>
   );
 
-  // In its own window the call fills the window; in the app it floats over it
-  const view = (
-    <>
-      {expanded ? (
-        <div className="tm-fade fixed inset-0 z-50 flex flex-col gap-3 bg-slate-950 p-4 text-white">
-          <div className="flex items-center gap-2">
-            <Icon name="headphones" size={18} className="text-zinc-500" />
-            <span className="flex-1 truncate font-semibold">
-              {CALL} · {title}
-            </span>
-            {huddleNotice && <span className="text-sm text-white/60">{huddleNotice}</span>}
-            <span className="text-sm text-white/50">
-              {people.length} {people.length === 1 ? "person" : "people"}
-            </span>
-          </div>
-          {main ? (
-            <div className="flex min-h-0 flex-1 gap-3">
-              <div className="flex min-w-0 flex-1 flex-col gap-2">
-                <div className="relative min-h-0 flex-1 overflow-hidden rounded-2xl bg-black">
-                  <Video key={main.key} stream={main.streams[SCREEN]!} contain />
-                  <span className="absolute top-3 left-3 flex items-center gap-1.5 rounded-lg bg-black/60 px-2.5 py-1 text-xs">
+  // The full call view: the call window shows it filling the window, the app shows it when expanded
+  const stage = (inWindow: boolean) => (
+    <div
+      className={
+        inWindow
+          ? "flex h-full flex-col gap-3 bg-slate-950 p-3 text-white"
+          : "tm-fade fixed inset-0 z-50 flex flex-col gap-3 bg-slate-950 p-4 text-white"
+      }
+    >
+      <div className="flex items-center gap-2 px-1">
+        <Icon
+          name="headphones"
+          size={inWindow ? 16 : 18}
+          className="shrink-0 text-white/50"
+        />
+        <span
+          className={`min-w-0 flex-1 truncate ${inWindow ? "text-sm" : ""}`}
+        >
+          <span className="font-semibold">{CALL}</span>
+          <span className="text-white/60"> · {title}</span>
+        </span>
+        {huddleNotice && (
+          <span className="truncate text-xs text-white/60">{huddleNotice}</span>
+        )}
+        <span
+          className={`shrink-0 text-xs ${calling ? "tm-fade text-white/70" : "text-white/50"}`}
+        >
+          {status}
+        </span>
+      </div>
+      {main ? (
+        <div className="flex min-h-0 flex-1 gap-3">
+          <div className="flex min-w-0 flex-1 flex-col gap-2">
+            <div className="relative min-h-0 flex-1 overflow-hidden rounded-2xl bg-black">
+              <Video key={main.key} stream={main.streams[SCREEN]!} contain />
+              <span className="absolute top-3 left-3 flex items-center gap-1.5 rounded-lg bg-black/60 px-2.5 py-1 text-xs">
+                <Icon name="monitor" size={14} />
+                {main.self
+                  ? "Your screen"
+                  : `${displayName(profiles[main.user])}'s screen`}
+              </span>
+            </div>
+            {screens.length > 1 && (
+              <div className="flex gap-2">
+                {screens.map((p) => (
+                  <button
+                    key={p.key}
+                    onClick={() => setFocus(p.key)}
+                    className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs transition ${p === main ? "bg-white text-slate-900" : "bg-white/10 hover:bg-white/20"}`}
+                  >
                     <Icon name="monitor" size={14} />
-                    {main.self ? "Your screen" : `${displayName(profiles[main.user])}'s screen`}
-                  </span>
-                </div>
-                {screens.length > 1 && (
-                  <div className="flex gap-2">
-                    {screens.map((p) => (
-                      <button
-                        key={p.key}
-                        onClick={() => setFocus(p.key)}
-                        className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs transition ${p === main ? "bg-white text-slate-900" : "bg-white/10 hover:bg-white/20"}`}
-                      >
-                        <Icon name="monitor" size={14} />
-                        {p.self ? "You" : displayName(profiles[p.user])}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-              <div className="flex w-56 shrink-0 flex-col gap-2 overflow-y-auto">
-                {people.map((p) => (
-                  <Tile key={p.key} p={p} profile={profiles[p.user]} small />
+                    {p.self ? "You" : displayName(profiles[p.user])}
+                  </button>
                 ))}
               </div>
-            </div>
-          ) : (
-            <div className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto">
-              <div className={`grid w-full gap-3 ${cols === 1 ? "max-w-2xl" : "max-w-5xl"}`} style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
-                {people.map((p) => (
-                  <Tile key={p.key} p={p} profile={profiles[p.user]} />
-                ))}
-              </div>
-            </div>
-          )}
-          {error && <p className="text-center text-xs text-amber-400">{error}</p>}
-          <div className="flex justify-center">{controls(true)}</div>
+            )}
+          </div>
+          {/* A narrow call window gives the whole width to the screen */}
+          <div
+            className={`${inWindow ? "hidden w-44 sm:flex" : "flex w-56"} shrink-0 flex-col gap-2 overflow-y-auto`}
+          >
+            {people.map((p) => (
+              <Tile key={p.key} p={p} profile={profiles[p.user]} small />
+            ))}
+          </div>
+        </div>
+      ) : inWindow ? (
+        <div
+          className="grid min-h-0 flex-1 gap-2"
+          style={{
+            gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
+            gridTemplateRows: `repeat(${rows}, minmax(0, 1fr))`,
+          }}
+        >
+          {people.map((p) => (
+            <Tile
+              key={p.key}
+              p={p}
+              profile={profiles[p.user]}
+              small={people.length > 2}
+              fill
+            />
+          ))}
         </div>
       ) : (
-        <div
-          ref={popout ? undefined : box}
-          className={
-            popout
-              ? "flex h-full flex-col overflow-y-auto bg-white p-3.5 text-zinc-900"
-              : `tm-pop tm-float fixed z-40 w-[26rem] max-w-[calc(100vw-16px)] rounded-2xl bg-white p-3.5 ${pos ? "" : "bottom-4 left-4"}`
-          }
-          style={!popout && pos ? { left: `max(8px, min(${pos.x}px, calc(100vw - 424px)))`, top: `max(8px, min(${pos.y}px, calc(100vh - 190px)))` } : undefined}
-        >
+        <div className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto">
           <div
-            onPointerDown={popout ? undefined : startDrag}
-            onDoubleClick={popout ? undefined : resetPos}
-            className={`-mx-1 -mt-1 flex items-center gap-2 rounded-xl px-1 py-1 select-none ${popout ? "" : "cursor-grab touch-none active:cursor-grabbing"}`}
-            title={popout ? undefined : "Drag to move · double-click to reset"}
+            className={`grid w-full gap-3 ${cols === 1 ? "max-w-2xl" : "max-w-5xl"}`}
+            style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}
           >
-            {!popout && <Icon name="grip" size={14} className="text-zinc-300" />}
-            <Icon name="headphones" size={18} className="text-zinc-500" />
-            <span className="min-w-0 flex-1 truncate text-sm">
-              <span className="font-semibold">{CALL}</span>
-              <span className="text-zinc-500"> · {title}</span>
-            </span>
-            <span className="text-xs text-zinc-400">{people.length}</span>
-          </div>
-          <div className="my-3.5 flex flex-wrap items-center gap-3">
             {people.map((p) => (
-              <Face key={p.key} p={p} profile={profiles[p.user]} />
+              <Tile key={p.key} p={p} profile={profiles[p.user]} />
             ))}
-            {calling && <span className="tm-fade ml-1 text-xs text-zinc-400">Calling…</span>}
-            {unanswered && people.length === 1 && <span className="ml-1 text-xs text-zinc-400">No answer</span>}
           </div>
-          {othersSharing.length > 0 && (
-            <button onClick={toggleExpanded} className="mb-2 flex w-full items-center gap-2 rounded-xl border border-tm-line px-3 py-1.5 text-left text-xs text-zinc-600 transition hover:bg-tm-surface">
-              <Icon name="monitor" size={14} />
-              {othersSharing.map((p) => displayName(profiles[p.user])).join(", ")} {othersSharing.length > 1 ? "are" : "is"} sharing · View
-            </button>
-          )}
-          {mine.sharing && <p className="mb-2 text-xs text-zinc-500">You are sharing your screen</p>}
-          {error && <p className="mb-2 text-xs text-amber-600">{error}</p>}
-          {huddleNotice && <p className="mb-2 text-xs text-zinc-500">{huddleNotice}</p>}
-          {controls(false)}
         </div>
       )}
-    </>
+      {error && <p className="text-center text-xs text-amber-400">{error}</p>}
+      <div className="flex justify-center">{controls(true)}</div>
+    </div>
+  );
+
+  // The call's own window, Slack-huddle style: a calling screen until someone joins, then everyone's tiles
+  const alone = people.length === 1;
+  const dm = channels[channelId]?.kind === "dm";
+  const callee = dm
+    ? profiles[(dmMembers[channelId] ?? []).find((id) => id !== me.id) ?? ""]
+    : undefined;
+  const windowView = (
+    // Framed in the app's colors: a green-to-blue header band and a green border round the window
+    <div className="flex h-full flex-col border-[3px] border-tm-green bg-white text-zinc-900">
+      <header className="flex items-center gap-2.5 bg-linear-to-r from-tm-green to-tm-blue px-3.5 py-2.5 text-white">
+        <span
+          className={`h-2 w-2 shrink-0 rounded-full ring-2 ring-white/40 ${alone ? "bg-amber-300" : "bg-white"} ${calling ? "animate-pulse" : ""}`}
+        />
+        <Icon name="headphones" size={16} className="shrink-0 text-white/90" />
+        <span className="min-w-0 flex-1 truncate text-sm">
+          <span className="font-semibold">{title}</span>
+          <span className="text-white/75"> · {CALL}</span>
+        </span>
+        {huddleNotice && (
+          <span className="truncate text-xs text-white/85">{huddleNotice}</span>
+        )}
+        <span className="flex shrink-0 items-center gap-1.5 rounded-full bg-white/20 px-2.5 py-1 text-xs font-medium text-white">
+          {connectedAt && !alone ? (
+            <>
+              <Elapsed since={connectedAt} />
+              <span className="text-white/50">·</span>
+              <Icon name="users" size={12} />
+              {people.length}
+            </>
+          ) : (
+            status
+          )}
+        </span>
+      </header>
+
+      <div
+        className="flex min-h-0 flex-1 flex-col gap-3 p-3"
+        style={{
+          background:
+            "linear-gradient(180deg, #f0fdf4 0%, #ffffff 35%, #eff6ff 100%)",
+        }}
+      >
+        {main ? (
+          <div className="flex min-h-0 flex-1 gap-3">
+            <div className="relative min-w-0 flex-1 overflow-hidden rounded-2xl bg-zinc-900 ring-2 ring-tm-blue/30">
+              <Video key={main.key} stream={main.streams[SCREEN]!} contain />
+              <span className="absolute top-2.5 left-2.5 flex items-center gap-1.5 rounded-full bg-black/60 px-2.5 py-1 text-xs text-white backdrop-blur">
+                <Icon name="monitor" size={13} />
+                {main.self
+                  ? "Your screen"
+                  : `${displayName(profiles[main.user])}'s screen`}
+              </span>
+              {screens.length > 1 && (
+                <div className="absolute top-2.5 right-2.5 flex gap-1.5">
+                  {screens.map((p) => (
+                    <button
+                      key={p.key}
+                      onClick={() => setFocus(p.key)}
+                      className={`rounded-full px-2.5 py-1 text-xs transition ${p === main ? "bg-white text-slate-900" : "bg-black/60 text-white hover:bg-black/80"}`}
+                    >
+                      {p.self ? "You" : displayName(profiles[p.user])}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="hidden w-40 shrink-0 flex-col gap-2 overflow-y-auto sm:flex">
+              {people.map((p) => (
+                <div key={p.key} className="aspect-video shrink-0">
+                  <WindowTile p={p} profile={profiles[p.user]} compact />
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : alone ? (
+          <div className="relative flex min-h-0 flex-1 flex-col items-center justify-center gap-5 rounded-2xl">
+            <div className="relative">
+              {calling && (
+                <span
+                  className="absolute -inset-3 animate-ping rounded-[34%] bg-tm-green/25"
+                  style={{ animationDuration: "1.8s" }}
+                />
+              )}
+              {callee ? (
+                <span className="relative block rounded-[30%] ring-4 ring-tm-green/40 ring-offset-4">
+                  <Avatar profile={callee} size={104} />
+                </span>
+              ) : (
+                <span className="relative flex h-[104px] w-[104px] items-center justify-center rounded-[30%] bg-tm-blue/10 ring-4 ring-tm-green/40 ring-offset-4">
+                  <Icon name="headphones" size={44} className="text-tm-blue" />
+                </span>
+              )}
+            </div>
+            <div className="text-center">
+              <div className="text-lg font-semibold">
+                {callee ? displayName(callee) : title}
+              </div>
+              <div className="mt-1 text-sm text-zinc-500">
+                {calling
+                  ? "Calling…"
+                  : unanswered
+                    ? "No answer"
+                    : "Waiting for others to join"}
+              </div>
+            </div>
+            {/* Your camera, while there's no one else to show */}
+            {mine.camera && local[CAMERA] && (
+              <div className="absolute right-0 bottom-0 aspect-video w-36 overflow-hidden rounded-xl shadow-md ring-1 ring-zinc-200">
+                <Video stream={local[CAMERA]!} mirror />
+              </div>
+            )}
+          </div>
+        ) : (
+          <div
+            className="grid min-h-0 flex-1 gap-2"
+            style={{
+              gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
+              gridTemplateRows: `repeat(${rows}, minmax(0, 1fr))`,
+            }}
+          >
+            {people.map((p) => (
+              <WindowTile
+                key={p.key}
+                p={p}
+                profile={profiles[p.user]}
+                compact={people.length > 2}
+              />
+            ))}
+          </div>
+        )}
+
+        {error && <p className="text-center text-xs text-amber-600">{error}</p>}
+        <div className="flex justify-center">
+          <div className="rounded-2xl bg-white p-1.5 shadow-md ring-2 ring-tm-green/35">
+            {controls(false)}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  // The small box floating over the app
+  const card = (
+    <div
+      ref={box}
+      className={`tm-pop tm-float fixed z-40 w-[26rem] max-w-[calc(100vw-16px)] rounded-2xl bg-white p-3.5 ${pos ? "" : "bottom-4 left-4"}`}
+      style={
+        pos
+          ? {
+              left: `max(8px, min(${pos.x}px, calc(100vw - 424px)))`,
+              top: `max(8px, min(${pos.y}px, calc(100vh - 190px)))`,
+            }
+          : undefined
+      }
+    >
+      <div
+        onPointerDown={startDrag}
+        onDoubleClick={resetPos}
+        className="-mx-1 -mt-1 flex cursor-grab touch-none items-center gap-2 rounded-xl px-1 py-1 select-none active:cursor-grabbing"
+        title="Drag to move · drag off the edge to open it in its own window · double-click to reset"
+      >
+        <Icon name="grip" size={14} className="text-zinc-300" />
+        <Icon name="headphones" size={18} className="text-zinc-500" />
+        <span className="min-w-0 flex-1 truncate text-sm">
+          <span className="font-semibold">{CALL}</span>
+          <span className="text-zinc-500"> · {title}</span>
+        </span>
+        <span className="text-xs text-zinc-400">{people.length}</span>
+      </div>
+      <div className="my-3.5 flex flex-wrap items-center gap-3">
+        {people.map((p) => (
+          <Face key={p.key} p={p} profile={profiles[p.user]} />
+        ))}
+        {calling && (
+          <span className="tm-fade ml-1 text-xs text-zinc-400">Calling…</span>
+        )}
+        {unanswered && people.length === 1 && (
+          <span className="ml-1 text-xs text-zinc-400">No answer</span>
+        )}
+      </div>
+      {othersSharing.length > 0 && (
+        <button
+          onClick={toggleExpanded}
+          className="mb-2 flex w-full items-center gap-2 rounded-xl border border-tm-line px-3 py-1.5 text-left text-xs text-zinc-600 transition hover:bg-tm-surface"
+        >
+          <Icon name="monitor" size={14} />
+          {othersSharing
+            .map((p) => displayName(profiles[p.user]))
+            .join(", ")}{" "}
+          {othersSharing.length > 1 ? "are" : "is"} sharing · View
+        </button>
+      )}
+      {mine.sharing && (
+        <p className="mb-2 text-xs text-zinc-500">
+          You are sharing your screen
+        </p>
+      )}
+      {error && <p className="mb-2 text-xs text-amber-600">{error}</p>}
+      {huddleNotice && (
+        <p className="mb-2 text-xs text-zinc-500">{huddleNotice}</p>
+      )}
+      {controls(false)}
+    </div>
   );
 
   return (
@@ -763,29 +1223,11 @@ export default function Huddle({ channelId, onLeave }: { channelId: string; onLe
       {/* Voices play from the app's page either way, so they keep going whatever the call window does */}
       {Object.entries(remotes).map(([k, s]) => s[MIC] && <Sound key={k} stream={s[MIC]} />)}
 
-      {popout ? (
-        <>
-          {createPortal(view, popout.document.body)}
-          <div className="tm-pop tm-float fixed bottom-4 left-4 z-40 flex max-w-[calc(100vw-32px)] items-center gap-2 rounded-2xl bg-white py-2 pr-2 pl-3">
-            <Icon name="headphones" size={18} className="shrink-0 text-zinc-500" />
-            <span className="min-w-0 flex-1 truncate text-sm">
-              <span className="font-semibold">{CALL}</span>
-              <span className="text-zinc-500"> · in its own window</span>
-            </span>
-            <Btn on={mine.muted} disabled={!local[MIC]} onClick={toggleMute} title={mine.muted ? "Unmute" : "Mute"}>
-              <Icon name={mine.muted ? "micOff" : "mic"} />
-            </Btn>
-            <Btn onClick={() => popout.close()} title="Back into the app">
-              <Icon name="popIn" />
-            </Btn>
-            <Btn danger onClick={onLeave} title={`Leave ${call}`}>
-              <Icon name="phoneOff" size={16} />
-            </Btn>
-          </div>
-        </>
-      ) : (
-        view
-      )}
+      {popout
+        ? createPortal(windowView, popout.document.body)
+        : expanded
+          ? stage(false)
+          : card}
 
       {inviting && <InvitePeople inHuddle={people.map((p) => p.user)} onClose={() => setInviting(false)} />}
     </>
