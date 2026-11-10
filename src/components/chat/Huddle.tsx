@@ -10,12 +10,23 @@ import { Icon } from "../icons";
 import { useChat, type Ring } from "./store";
 
 // Mesh WebRTC: every participant connects to every other; Supabase Realtime carries the signaling.
-// People behind strict NATs or firewalls can only connect through a TURN relay (NEXT_PUBLIC_TURN_*).
+// People behind strict NATs or firewalls can only connect through a TURN relay: /api/turn hands out
+// short-lived relay credentials, and NEXT_PUBLIC_TURN_* still works for a self-hosted relay.
 const turn = process.env.NEXT_PUBLIC_TURN_URL;
-const ICE: RTCIceServer[] = [
+const STATIC_ICE: RTCIceServer[] = [
   { urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"] },
   ...(turn ? [{ urls: turn.split(","), username: process.env.NEXT_PUBLIC_TURN_USERNAME, credential: process.env.NEXT_PUBLIC_TURN_CREDENTIAL }] : []),
 ];
+
+async function iceServers(): Promise<RTCIceServer[]> {
+  try {
+    const { data } = await supabase.auth.getSession();
+    const res = await fetch("/api/turn", { headers: { Authorization: `Bearer ${data.session?.access_token}` }, cache: "no-store" });
+    const body = (await res.json()) as { iceServers?: RTCIceServer[] };
+    if (Array.isArray(body.iceServers) && body.iceServers.length) return [...STATIC_ICE, ...body.iceServers];
+  } catch {}
+  return STATIC_ICE;
+}
 
 // Every connection carries three fixed slots. Muting, sharing or turning on the camera swaps a
 // track in or out with replaceTrack, so a call is negotiated once and never mid-call.
@@ -272,8 +283,9 @@ export default function Huddle({ channelId, onLeave }: { channelId: string; onLe
         t.sender.replaceTrack(sending[i]).catch(() => {});
       });
 
+    let ice = STATIC_ICE;
     const connect = (key: string) => {
-      const pc = new RTCPeerConnection({ iceServers: ICE });
+      const pc = new RTCPeerConnection({ iceServers: ice });
       conns.set(key, { pc, chain: Promise.resolve() });
       pc.onicecandidate = (e) => e.candidate && send({ to: key, ice: e.candidate.toJSON() });
       pc.ontrack = ({ track, transceiver }) => {
@@ -318,6 +330,8 @@ export default function Huddle({ channelId, onLeave }: { channelId: string; onLe
     let hands = new Set<string>();
     let seen = new Set<string>();
     (async () => {
+      // Relay credentials load while the mic permission prompt is up
+      const servers = iceServers().then((s) => (ice = s));
       try {
         const mic = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
         if (closed) return mic.getTracks().forEach((t) => t.stop());
@@ -326,6 +340,7 @@ export default function Huddle({ channelId, onLeave }: { channelId: string; onLe
       } catch {
         setError("Microphone unavailable. You can still listen and share your screen.");
       }
+      await servers;
       if (closed) return;
       ch.on("presence", { event: "sync" }, () => {
         const others: Record<string, State> = {};
@@ -360,7 +375,11 @@ export default function Huddle({ channelId, onLeave }: { channelId: string; onLe
             offer(key);
           }
       })
-        .on("presence", { event: "leave" }, ({ key }) => drop(key))
+        // Re-tracking (mute, camera, share, hand, a new attendee) arrives as a leave of the old entry
+        // alongside a join of the new one; only drop the connection once the key has no entries left
+        .on("presence", { event: "leave" }, ({ key, currentPresences }) => {
+          if (!currentPresences?.length) drop(key);
+        })
         .on("broadcast", { event: "signal" }, ({ payload }) => onSignal(payload as Signal))
         .on("broadcast", { event: "react" }, ({ payload }) => {
           if (typeof payload?.from === "string" && REACTIONS.includes(payload.emoji)) flash(setReactions, payload.from, payload.emoji);
