@@ -1,0 +1,48 @@
+{
+  "expo": {
+    "name": "Workchime",
+    "slug": "workchime",
+    "scheme": "workchime",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "bundleIdentifier": "app.workchime.mobile",
+      "supportsTablet": true,
+      "deploymentTarget": "15.1",
+      "entitlements": {
+        "com.apple.security.application-groups": ["group.app.workchime.mobile"]
+      },
+      "infoPlist": {
+        "UIBackgroundModes": ["audio", "voip", "remote-notification"],
+        "RTCAppGroupIdentifier": "group.app.workchime.mobile",
+        "RTCScreenSharingExtension": "app.workchime.mobile.broadcast"
+      }
+    },
+    "android": {
+      "package": "app.workchime.mobile",
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.CAMERA",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.BLUETOOTH_CONNECT",
+        "android.permission.WAKE_LOCK",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_MICROPHONE",
+        "android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION",
+        "android.permission.USE_FULL_SCREEN_INTENT",
+        "android.permission.POST_NOTIFICATIONS"
+      ]
+    },
+    "plugins": [
+      "expo-router",
+      ["expo-notifications", { "color": "#0f2d4d", "enableBackgroundRemoteNotifications": true }],
+      ["expo-image-picker", { "photosPermission": "Workchime shares the photos and videos you pick in conversations.", "cameraPermission": "Workchime uses the camera for photos, video clips and Meet calls.", "microphonePermission": "Workchime uses the microphone for voice clips, video clips and Meet calls." }],
+      ["expo-audio", { "microphonePermission": "Workchime uses the microphone for voice clips and Meet calls." }],
+      ["@config-plugins/react-native-webrtc", { "cameraPermission": "Workchime uses the camera for video in Meet calls.", "microphonePermission": "Workchime uses the microphone for Meet calls." }],
+      "@bacons/apple-targets",
+      "./plugins/withVoip"
+    ],
+    "experiments": { "typedRoutes": false }
+  }
+}

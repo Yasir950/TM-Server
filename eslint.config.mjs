@@ -14,6 +14,8 @@ const eslintConfig = defineConfig([
     "next-env.d.ts",
     // Electron desktop app: its own Node/CommonJS project
     "desktop/**",
+    // Expo iOS/Android app: its own React Native project
+    "mobile/**",
   ]),
 ]);
 
