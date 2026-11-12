@@ -217,13 +217,15 @@ function pickSource(sources, parent) {
       thumb: s.thumbnail.isEmpty() ? null : s.thumbnail.toDataURL(),
       icon: s.appIcon && !s.appIcon.isEmpty() ? s.appIcon.toDataURL() : null,
     }));
+    // Kept up front: by the "closed" event the window is destroyed and reading picker.webContents throws
+    const wc = picker.webContents;
     const finish = (id) => {
-      if (picking?.wc !== picker.webContents) return;
+      if (picking?.wc !== wc) return;
       picking = null;
       resolve(sources.find((s) => s.id === id) ?? null);
       if (!picker.isDestroyed()) picker.close();
     };
-    picking = { wc: picker.webContents, list, finish };
+    picking = { wc, list, finish };
     picker.on("closed", () => finish(null));
     picker.once("ready-to-show", () => picker.show());
     picker.loadFile(path.join(__dirname, "picker.html"));
