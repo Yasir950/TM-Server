@@ -45,7 +45,7 @@ export default function You() {
       {company && <Row icon="briefcase" text={`${company.name} · people & invites`} onPress={() => router.push("/company")} />}
       {company && isAdmin(me) && <Row icon="tool" text="Admin" onPress={() => router.push("/admin")} />}
       {superAdmin && <Row icon="shield" text="Super admin" onPress={() => router.push("/super-admin")} />}
-      {!company && <Row icon="plus" text="Create or join a workspace" onPress={() => router.push("/workspace")} />}
+      <Row icon="plus" text="Add or join a company" onPress={() => router.push("/workspace")} />
       {companies.length > 1 && (
         <>
           <Section title="Switch workspace" />

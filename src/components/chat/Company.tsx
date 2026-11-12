@@ -96,7 +96,7 @@ const Card = ({ title, children }: { title: string; children: React.ReactNode })
 // Onboarding: shown until the user belongs to a company -------------------
 
 export function Onboarding({ onClose }: { onClose?: () => void }) {
-  const { me, reload } = useChat();
+  const { me, reload, superAdmin } = useChat();
   const [tab, setTab] = useState<"create" | "invite" | "find">("create");
   const [name, setName] = useState("");
   const [handle, setHandle] = useState("");
@@ -106,8 +106,9 @@ export function Onboarding({ onClose }: { onClose?: () => void }) {
   const [error, setError] = useState("");
 
   useEffect(() => {
+    if (!superAdmin) return;
     supabase.from("join_requests").select("company_id,status,created_at").then(({ data }) => setRequests(data ?? []));
-  }, []);
+  }, [superAdmin]);
 
   const run = async (p: PromiseLike<{ error: { message: string } | null }>) => {
     setError("");
@@ -120,7 +121,12 @@ export function Onboarding({ onClose }: { onClose?: () => void }) {
 
   const body = (
     <div className="space-y-4">
-      <Tabs tabs={[["create", "Create"], ["invite", "Join with invite"], ["find", "Find"]]} value={tab} onChange={setTab} />
+      {/* Finding companies by handle is for super admins only */}
+      <Tabs
+        tabs={superAdmin ? [["create", "Create"], ["invite", "Join with invite"], ["find", "Find"]] : [["create", "Create"], ["invite", "Join with invite"]]}
+        value={tab}
+        onChange={setTab}
+      />
       {tab === "create" && (
         <form className="space-y-4" onSubmit={(e) => (e.preventDefault(), run(supabase.rpc("create_company", { p_name: name, p_handle: handle })))}>
           <Field label="Company name">
@@ -142,7 +148,7 @@ export function Onboarding({ onClose }: { onClose?: () => void }) {
           <button className={`${btn} w-full py-2.5`}>Join company</button>
         </form>
       )}
-      {tab === "find" && (
+      {tab === "find" && superAdmin && (
         <div className="space-y-3">
           <form
             className="flex gap-2"
@@ -186,7 +192,7 @@ export function Onboarding({ onClose }: { onClose?: () => void }) {
     </div>
   );
 
-  if (onClose) return <Modal title="Add a company" onClose={onClose}>{body}</Modal>;
+  if (onClose) return <Modal title="Add or join a company" onClose={onClose}>{body}</Modal>;
   return (
     <div className="flex min-h-full flex-col items-center justify-center overflow-y-auto bg-tm-surface px-4 py-12">
       <Logo height={48} />
@@ -253,6 +259,7 @@ export function InviteFromUrl() {
 export function CompanySwitcher() {
   const { company, companies, switchCompany, setView } = useChat();
   const [open, setOpen] = useState(false);
+  const [adding, setAdding] = useState(false);
   return (
     <div className="relative mb-2">
       <button onClick={() => setOpen(!open)} className="flex max-w-full items-center gap-1.5 rounded-xl px-2.5 py-1.5 text-left transition hover:bg-white">
@@ -270,8 +277,13 @@ export function CompanySwitcher() {
           ))}
           <div className="my-1 h-px bg-tm-line" />
           <button onClick={() => (setOpen(false), setView("company"))} className="block w-full rounded-lg px-2 py-1.5 text-left hover:bg-tm-blue-light">Company details</button>
+          <button onClick={() => (setOpen(false), setAdding(true))} className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left hover:bg-tm-blue-light">
+            <Icon name="plus" size={15} className="text-zinc-500" />
+            Add or join a company
+          </button>
         </div>
       )}
+      {adding && <Onboarding onClose={() => setAdding(false)} />}
     </div>
   );
 }

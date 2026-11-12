@@ -6,9 +6,9 @@ import { Button, C, GhostButton, Label, Segmented, field } from "./ui";
 
 type Found = { id: string; name: string; logo_url: string | null; member_count: number };
 
-// Port of Onboarding (src/components/chat/Company.tsx): create a company, join with an invite, or find one by handle
+// Port of Onboarding (src/components/chat/Company.tsx): create a company, join with an invite, or (super admins) find one by handle
 export function WorkspaceForm({ onDone }: { onDone?: () => void }) {
-  const { reload } = useChat();
+  const { reload, superAdmin } = useChat();
   const [tab, setTab] = useState<"create" | "invite" | "find">("create");
   const [name, setName] = useState("");
   const [handle, setHandle] = useState("");
@@ -18,8 +18,9 @@ export function WorkspaceForm({ onDone }: { onDone?: () => void }) {
   const [error, setError] = useState("");
 
   useEffect(() => {
+    if (!superAdmin) return;
     supabase.from("join_requests").select("company_id,status").then(({ data }) => setRequests(data ?? []));
-  }, []);
+  }, [superAdmin]);
 
   const run = async (p: PromiseLike<{ error: { message: string } | null }>) => {
     setError("");
@@ -32,10 +33,11 @@ export function WorkspaceForm({ onDone }: { onDone?: () => void }) {
   return (
     <View style={{ gap: 12 }}>
       <Segmented
+        // Finding companies by handle is for super admins only
         tabs={[
           ["create", "Create"],
           ["invite", "Invite"],
-          ["find", "Find"],
+          ...(superAdmin ? [["find", "Find"] as ["find", string]] : []),
         ]}
         value={tab}
         onChange={setTab}
@@ -65,7 +67,7 @@ export function WorkspaceForm({ onDone }: { onDone?: () => void }) {
           <Button title="Join company" disabled={!token.trim()} onPress={() => run(supabase.rpc("accept_invite", { p_token: token.trim().split("invite=").pop() }))} />
         </>
       )}
-      {tab === "find" && (
+      {tab === "find" && superAdmin && (
         <>
           <View style={{ flexDirection: "row", gap: 8 }}>
             <TextInput style={[field, { flex: 1 }]} autoCapitalize="none" placeholder="Company handle, e.g. acme" value={handle} onChangeText={setHandle} />
