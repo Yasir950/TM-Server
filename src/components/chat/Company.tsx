@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { supabase, displayName, activeStatus, inDnd, isAdmin, uploadImage, type Company, type Profile, type Role } from "@/lib/supabase";
 import { signOut } from "@/lib/push";
-import { Avatar, Logo, Modal, SidePanel, StatusBadge, Tabs, avatarColor, btn, btnGhost, input } from "../ui";
+import { Avatar, askText, Logo, Modal, SidePanel, StatusBadge, Tabs, avatarColor, btn, btnGhost, input } from "../ui";
 import { useChat } from "./store";
 import { ViewShell } from "./Views";
 import { Icon } from "../icons";
@@ -918,7 +918,7 @@ export function CompanyView() {
             {owner && (
               <button
                 className="rounded-xl bg-red-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-red-700"
-                onClick={async () => prompt(`This deletes every channel, message and file in ${company.name}. Type the company handle to confirm.`) === company.handle && done((await supabase.rpc("delete_company")).error, "Company deleted")}
+                onClick={async () => (await askText("Delete company", `This deletes every channel, message and file in ${company.name}. Type the company handle to confirm.`, company.handle)) === company.handle && done((await supabase.rpc("delete_company")).error, "Company deleted")}
               >
                 Delete company
               </button>

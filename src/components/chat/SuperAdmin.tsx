@@ -2,7 +2,7 @@
 
 import { Fragment, useCallback, useEffect, useState } from "react";
 import { supabase, fmtBytes, type PlanId, type Profile, type Role } from "@/lib/supabase";
-import { Avatar, RowSkeleton, Skeleton, Tabs, btn, btnGhost, input } from "../ui";
+import { Avatar, askText, RowSkeleton, Skeleton, Tabs, btn, btnGhost, input } from "../ui";
 import { useChat } from "./store";
 import { ViewShell } from "./Views";
 import { CompanyLogo } from "./Company";
@@ -161,7 +161,7 @@ function Companies({ notify }: { notify: (s: string) => void }) {
   };
 
   const remove = async (c: CompanyRow) => {
-    if (prompt(`This permanently deletes ${c.name} with every channel, message and file in it. Type the handle "${c.handle}" to confirm.`) !== c.handle) return;
+    if ((await askText("Delete company", `This permanently deletes ${c.name} with every channel, message and file in it. Type the handle "${c.handle}" to confirm.`, c.handle)) !== c.handle) return;
     const { error } = await supabase.rpc("platform_delete_company", { p_company: c.id });
     notify(error ? error.message : `${c.name} deleted`);
     if (error) return;
@@ -360,7 +360,7 @@ function Users({ notify }: { notify: (s: string) => void }) {
 
   const deleteUser = async (u: UserRow) => {
     const name = u.full_name || `@${u.username}`;
-    if (prompt(`This permanently deletes ${name}'s account, including their messages and files. Type their email "${u.email}" to confirm.`) !== u.email) return;
+    if ((await askText("Delete account", `This permanently deletes ${name}'s account, including their messages and files. Type their email "${u.email}" to confirm.`, u.email)) !== u.email) return;
     const { error } = await supabase.rpc("platform_delete_user", { p_user: u.id });
     notify(error ? error.message : `${name} deleted`);
     if (!error) await Promise.all([load(), reload()]);

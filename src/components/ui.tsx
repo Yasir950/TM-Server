@@ -108,6 +108,47 @@ export function Modal({ title, onClose, children, wide }: { title: React.ReactNo
   );
 }
 
+// window.prompt() as a dialog of the app's own: the desktop app (Electron) has no prompt(). Resolves with the text or null.
+export function askText(title: string, message: string, placeholder = ""): Promise<string | null> {
+  return new Promise((resolve) => {
+    const host = document.body.appendChild(document.createElement("div"));
+    import("react-dom/client").then(({ createRoot }) => {
+      const root = createRoot(host);
+      const done = (v: string | null) => {
+        root.unmount();
+        host.remove();
+        resolve(v);
+      };
+      root.render(<AskText title={title} message={message} placeholder={placeholder} done={done} />);
+    });
+  });
+}
+
+function AskText({ title, message, placeholder, done }: { title: string; message: string; placeholder: string; done: (v: string | null) => void }) {
+  const [v, setV] = useState("");
+  return (
+    <Modal title={title} onClose={() => done(null)}>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          done(v);
+        }}
+      >
+        <p className="text-sm text-zinc-600">{message}</p>
+        <input autoFocus className={`${input} mt-3`} value={v} onChange={(e) => setV(e.target.value)} placeholder={placeholder} />
+        <div className="mt-4 flex justify-end gap-2">
+          <button type="button" className={btnGhost} onClick={() => done(null)}>
+            Cancel
+          </button>
+          <button className={btn} disabled={!v.trim()}>
+            OK
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
 export const btn =
   "rounded-xl bg-tm-blue px-4 py-2 text-sm font-semibold text-white transition hover:bg-tm-blue-dark active:scale-[0.98] disabled:opacity-50 disabled:active:scale-100";
 export const btnGhost = "rounded-xl border border-tm-line bg-white px-4 py-2 text-sm font-medium transition hover:bg-tm-surface active:scale-[0.98]";

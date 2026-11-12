@@ -14,7 +14,7 @@ import {
   type TaskType,
 } from "@/lib/supabase";
 import { dayLabel, timeOf } from "@/lib/format";
-import { Avatar, CardSkeleton, Modal, Tabs, btn, btnGhost, input } from "../ui";
+import { Avatar, askText, CardSkeleton, Modal, Tabs, btn, btnGhost, input } from "../ui";
 import { Icon, type IconName } from "../icons";
 import { useChat } from "./store";
 import { EmptyState, MobileBack, ViewShell } from "./Views";
@@ -1463,7 +1463,7 @@ function ProjectSettings({ project, onClose }: { project: Project; onClose: () =
   };
   const archive = () => run(() => supabase.from("projects").update({ archived: !project.archived }).eq("id", project.id));
   const destroy = async () => {
-    if (prompt(`This deletes ${project.name} and all its tasks for everyone. Type ${project.key} to confirm.`)?.trim().toUpperCase() !== project.key) return;
+    if ((await askText("Delete project", `This deletes ${project.name} and all its tasks for everyone. Type ${project.key} to confirm.`, project.key))?.trim().toUpperCase() !== project.key) return;
     if (await run(() => supabase.from("projects").delete().eq("id", project.id))) {
       onClose();
       openProject(null);

@@ -262,13 +262,11 @@ function WindowTile({
       {cam ? (
         <Video stream={cam} mirror={p.self} />
       ) : (
+        // Small tiles keep the avatar clear of the name below it; the speaking glow moves with it
         <span
-          className={`rounded-[30%] transition-shadow duration-300 ${speaking ? "shadow-[0_0_0_6px_rgba(34,197,94,0.35)]" : ""}`}
+          className={`block rounded-[30%] transition-shadow duration-300 ${compact ? "-translate-y-2.5" : ""} ${speaking ? "shadow-[0_0_0_6px_rgba(34,197,94,0.35)]" : ""}`}
         >
-          {/* Small tiles keep the avatar clear of the name below it */}
-          <span className={compact ? "block -translate-y-2.5" : "block"}>
-            <Avatar profile={profile} size={compact ? 36 : 96} />
-          </span>
+          <Avatar profile={profile} size={compact ? 36 : 96} />
         </span>
       )}
       {p.state.hand && (
@@ -1156,7 +1154,11 @@ export default function Huddle({
         card
       )}
 
-      {inviting && <InvitePeople inHuddle={people.map((p) => p.user)} onClose={() => setInviting(false)} />}
+      {/* In its own call window (desktop app) the dialog opens there, not behind it in the main window */}
+      {inviting &&
+        (popout
+          ? createPortal(<InvitePeople inHuddle={people.map((p) => p.user)} onClose={() => setInviting(false)} />, popout.document.body)
+          : <InvitePeople inHuddle={people.map((p) => p.user)} onClose={() => setInviting(false)} />)}
     </>
   );
 }

@@ -1,6 +1,6 @@
 // Workchime desktop: a native window around the hosted web app.
 // Closing the window keeps it running in the tray, so messages and calls still arrive (Electron has no Web Push).
-const { app, BrowserWindow, Menu, Tray, ipcMain, nativeImage, shell, session, desktopCapturer, systemPreferences, screen } = require("electron");
+const { app, BrowserWindow, Menu, Tray, clipboard, ipcMain, nativeImage, shell, session, desktopCapturer, systemPreferences, screen } = require("electron");
 const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
@@ -112,6 +112,20 @@ async function start() {
   // Unpackaged (npm start) runs through electron.exe, which needs the app path to relaunch with
   if (process.defaultApp) app.setAsDefaultProtocolClient(PROTOCOL, process.execPath, [path.resolve(process.argv[1])]);
   else app.setAsDefaultProtocolClient(PROTOCOL);
+
+  // Every window (main, call, picker): a right-click menu like a browser's, and outside links in the default browser
+  app.on("web-contents-created", (_e, wc) => {
+    wc.on("context-menu", (_ev, p) => contextMenu(wc, p));
+    if (wc.getType() !== "window") return;
+    wc.on("did-create-window", (child) => {
+      child.webContents.setWindowOpenHandler(openHandler);
+      child.webContents.on("will-navigate", (ev, url) => {
+        if (new URL(url).origin === ORIGIN) return;
+        ev.preventDefault();
+        if (/^(https?|mailto|tel):/.test(url)) shell.openExternal(url);
+      });
+    });
+  });
 
   createTray();
   createWindow();
@@ -295,18 +309,7 @@ function createWindow() {
   });
   win.loadURL(APP_URL);
 
-  // Links leaving the app open in the default browser
-  win.webContents.setWindowOpenHandler(({ url, frameName }) => {
-    // The call in its own window (Huddle.tsx openCallWindow), like a Slack huddle window
-    if (frameName === "tm-call" && new URL(url).origin === ORIGIN)
-      return {
-        action: "allow",
-        overrideBrowserWindowOptions: { width: 520, height: 420, minWidth: 360, minHeight: 300, autoHideMenuBar: true, title: "Workchime call", backgroundColor: "#ffffff" },
-      };
-    if (new URL(url).origin === ORIGIN) return { action: "allow" };
-    shell.openExternal(url);
-    return { action: "deny" };
-  });
+  win.webContents.setWindowOpenHandler(openHandler);
   win.webContents.on("will-navigate", (e, url) => {
     if (new URL(url).origin !== ORIGIN) {
       e.preventDefault();
@@ -329,6 +332,45 @@ function createWindow() {
   // Hiding to the tray removes the taskbar button, and its overlay with it
   win.on("show", applyBadge);
   win.on("closed", () => (win = null));
+}
+
+// Links leaving the app open in the default browser
+function openHandler({ url, frameName }) {
+  let origin = null;
+  try {
+    origin = new URL(url).origin;
+  } catch {}
+  // The call in its own window (Huddle.tsx openCallWindow), like a Slack huddle window
+  if (frameName === "tm-call" && origin === ORIGIN)
+    return {
+      action: "allow",
+      overrideBrowserWindowOptions: { width: 520, height: 420, minWidth: 360, minHeight: 300, autoHideMenuBar: true, title: "Workchime call", backgroundColor: "#ffffff" },
+    };
+  if (origin === ORIGIN) return { action: "allow" };
+  if (/^(https?|mailto|tel):/.test(url)) shell.openExternal(url);
+  return { action: "deny" };
+}
+
+// Right-click: spelling suggestions, cut/copy/paste, links and images
+function contextMenu(wc, p) {
+  const items = [];
+  for (const s of p.dictionarySuggestions ?? []) items.push({ label: s, click: () => wc.replaceMisspelling(s) });
+  if (p.misspelledWord) {
+    if (!items.length) items.push({ label: "No suggestions", enabled: false });
+    items.push({ label: "Add to dictionary", click: () => wc.session.addWordToSpellCheckerDictionary(p.misspelledWord) }, { type: "separator" });
+  }
+  if (p.linkURL && /^(https?|mailto):/.test(p.linkURL)) {
+    items.push({ label: "Open link in browser", click: () => shell.openExternal(p.linkURL) }, { label: "Copy link", click: () => clipboard.writeText(p.linkURL) }, { type: "separator" });
+  }
+  if (p.mediaType === "image" && p.srcURL) {
+    items.push({ label: "Copy image", click: () => wc.copyImageAt(p.x, p.y) }, { label: "Save image as…", click: () => wc.downloadURL(p.srcURL) }, { type: "separator" });
+  }
+  const f = p.editFlags;
+  if (p.isEditable) items.push({ role: "undo", enabled: f.canUndo }, { role: "redo", enabled: f.canRedo }, { type: "separator" }, { role: "cut", enabled: f.canCut });
+  if (p.isEditable || p.selectionText) items.push({ role: "copy", enabled: f.canCopy });
+  if (p.isEditable) items.push({ role: "paste", enabled: f.canPaste }, { role: "selectAll" });
+  while (items.length && items[items.length - 1].type === "separator") items.pop();
+  if (items.length) Menu.buildFromTemplate(items).popup({ window: BrowserWindow.fromWebContents(wc) ?? undefined });
 }
 
 function showWindow() {

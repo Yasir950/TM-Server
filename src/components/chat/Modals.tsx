@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { supabase, displayName, type Channel, type Membership, type Message, type Webhook } from "@/lib/supabase";
 import { timeOf, fileSize } from "@/lib/format";
-import { Avatar, Modal, RowSkeleton, SidePanel, StatusBadge, Tabs, btn, btnGhost, input } from "../ui";
+import { Avatar, askText, Modal, RowSkeleton, SidePanel, StatusBadge, Tabs, btn, btnGhost, input } from "../ui";
 import { useChat } from "./store";
 
 const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9_\s-]/g, "");
@@ -215,7 +215,7 @@ export function ChannelDetails({ channel, onClose }: { channel: Channel; onClose
     onClose();
   }
   async function convert() {
-    const n = prompt("Name for the new private channel:");
+    const n = await askText("Convert to private channel", "Name for the new private channel:", "e.g. project-team");
     if (!n) return;
     const { error } = await supabase.rpc("convert_dm_to_channel", { p_id: channel.id, p_name: slug(n) });
     if (error) return setError(error.message.includes("channels_name_key") ? "That name is already taken." : error.message);
