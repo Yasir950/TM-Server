@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import type { Session } from "@supabase/supabase-js";
 import { supabase, openedFromRecoveryLink } from "@/lib/supabase";
 import Auth, { DesktopSignIn } from "@/components/Auth";
@@ -12,11 +12,23 @@ import Chat from "@/components/chat/Chat";
 // Signed-out visitors who just typed /app in a browser get the public site.
 // Anything with a query or hash (sign-in/sign-up buttons, invites, message links, email callbacks),
 // the desktop app and the installed home-screen app go straight to sign-in.
-const showPublicSite = () =>
-  !window.location.search && !window.location.hash && !window.workchime && !window.matchMedia("(display-mode: standalone)").matches;
+const showPublicSite = (hasQuery: boolean) =>
+  !hasQuery && !window.location.hash && !window.workchime && !window.matchMedia("(display-mode: standalone)").matches;
 
-export default function Home() {
+// Cache Components keeps this page alive (hidden) after it sends a signed-out visitor to the site, so the query
+// has to come from useSearchParams: coming back via a Sign in button (/app?signin) then re-renders with the new
+// query instead of replaying the old "no query, back to the site" redirect.
+export default function Page() {
+  return (
+    <Suspense fallback={null}>
+      <Home />
+    </Suspense>
+  );
+}
+
+function Home() {
   const router = useRouter();
+  const params = useSearchParams();
   const [session, setSession] = useState<Session | null | undefined>(undefined);
   // Opened from a reset email: ask for a new password before entering the app
   const [recovering, setRecovering] = useState(openedFromRecoveryLink);
@@ -31,7 +43,7 @@ export default function Home() {
     return () => data.subscription.unsubscribe();
   }, []);
 
-  const toSite = session === null && !recovering && showPublicSite();
+  const toSite = session === null && !recovering && showPublicSite(params.size > 0);
   useEffect(() => {
     if (toSite) router.replace("/");
   }, [toSite, router]);
@@ -49,7 +61,7 @@ export default function Home() {
 
   if (session === undefined || toSite) return null;
   // Desktop builds with browser sign-in show only a sign-in button; older ones keep the form
-  if (!session) return window.workchime?.signIn ? <DesktopSignIn /> : <Auth signup={new URLSearchParams(window.location.search).has("signup")} />;
+  if (!session) return window.workchime?.signIn ? <DesktopSignIn /> : <Auth key={params.has("signup") ? "signup" : "signin"} signup={params.has("signup")} />;
   if (recovering) return <Auth recovery onDone={() => setRecovering(false)} />;
   return (
     <ChatProvider key={session.user.id} session={session}>
