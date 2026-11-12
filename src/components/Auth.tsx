@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { signOut } from "@/lib/push";
 import { Logo, btn, input } from "./ui";
@@ -136,9 +137,24 @@ export default function Auth({ recovery, onDone, redirectTo, signup }: { recover
     </div>
   );
 
+  // A way back to the public site, for browsers only: the desktop app and the installed home-screen app are just the app,
+  // and the desktop sign-in page (app/desktop-auth, the only caller with redirectTo) shouldn't be left halfway
+  const toSite = mode !== "reset" && !redirectTo && !window.workchime && !window.matchMedia("(display-mode: standalone)").matches;
+
   return (
-    <div className="flex min-h-full flex-col items-center justify-center bg-white px-4 py-12">
-      <Logo height={60} />
+    <div className="relative flex min-h-full flex-col items-center justify-center bg-white px-4 py-12">
+      {toSite && (
+        <Link href="/" className="absolute top-4 left-4 flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-zinc-500 transition hover:bg-tm-surface hover:text-zinc-900 sm:top-6 sm:left-6">
+          <span aria-hidden>←</span> Back to home
+        </Link>
+      )}
+      {toSite ? (
+        <Link href="/" aria-label={`${APP_NAME} home`} className="rounded-xl transition hover:opacity-80">
+          <Logo height={60} />
+        </Link>
+      ) : (
+        <Logo height={60} />
+      )}
       <h1 className="mt-8 text-center text-3xl font-bold">{copy[mode].title}</h1>
       <p className="mt-2 max-w-sm text-center text-sm text-zinc-500">{copy[mode].subtitle}</p>
       <form onSubmit={submit} className="mt-8 w-full max-w-sm space-y-3">
