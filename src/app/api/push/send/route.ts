@@ -18,7 +18,7 @@ export async function POST(req: NextRequest) {
     payload?: Payload;
   };
   // Rows from before device_tokens had a platform arrive as bare Expo tokens
-  const devices = raw.map((d) => (typeof d === "string" ? { token: d, platform: "android", device: null } : d));
+  const devices = raw.map((d): Device => (typeof d === "string" ? { token: d, platform: "android", device: null } : d));
   if ((!subscriptions.length && !devices.length) || !payload) return Response.json({ sent: 0 });
 
   // The database builds app links as /?…; the app lives at /app
