@@ -252,7 +252,6 @@ export function InviteFromUrl() {
 export function CompanySwitcher() {
   const { company, companies, switchCompany, setView } = useChat();
   const [open, setOpen] = useState(false);
-  const [adding, setAdding] = useState(false);
   return (
     <div className="relative mb-2">
       <button onClick={() => setOpen(!open)} className="flex max-w-full items-center gap-1.5 rounded-xl px-2.5 py-1.5 text-left transition hover:bg-white">
@@ -270,10 +269,8 @@ export function CompanySwitcher() {
           ))}
           <div className="my-1 h-px bg-tm-line" />
           <button onClick={() => (setOpen(false), setView("company"))} className="block w-full rounded-lg px-2 py-1.5 text-left hover:bg-tm-blue-light">Company details</button>
-          <button onClick={() => (setOpen(false), setAdding(true))} className="block w-full rounded-lg px-2 py-1.5 text-left hover:bg-tm-blue-light">+ Create or join a company</button>
         </div>
       )}
-      {adding && <Onboarding onClose={() => setAdding(false)} />}
     </div>
   );
 }
