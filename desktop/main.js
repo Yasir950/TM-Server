@@ -1,6 +1,7 @@
 // Workchime desktop: a native window around the hosted web app.
 // Closing the window keeps it running in the tray, so messages and calls still arrive (Electron has no Web Push).
-const { app, BrowserWindow, Menu, Tray, clipboard, ipcMain, nativeImage, shell, session, desktopCapturer, systemPreferences, screen } = require("electron");
+const { app, BrowserWindow, Menu, Tray, clipboard, ipcMain, nativeImage, shell, session, desktopCapturer, systemPreferences, screen, powerMonitor } = require("electron");
+const { autoUpdater } = require("electron-updater");
 const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
@@ -17,7 +18,8 @@ let quitting = false;
 let pendingToken = null;
 
 // Started by the OS at login: stay in the tray until opened
-const startHidden = process.argv.includes("--hidden") || (process.platform === "darwin" && app.getLoginItemSettings().wasOpenedAsHidden);
+// ...or relaunched by an update installed while it was in the tray (installUpdateWhenIdle)
+const startHidden = process.argv.includes("--hidden") || (process.platform === "darwin" && app.getLoginItemSettings().wasOpenedAsHidden) || takeHiddenMarker();
 
 if (!app.requestSingleInstanceLock()) app.quit();
 else {
@@ -130,6 +132,7 @@ async function start() {
   createTray();
   createWindow();
   app.on("activate", () => showWindow());
+  startUpdates();
 
   // Launched by a sign-in link while the app wasn't running (Windows)
   const link = process.argv.find((a) => a.startsWith(`${PROTOCOL}://`));
@@ -283,6 +286,75 @@ function applyBadge() {
   tray?.setToolTip(label ? `Workchime (${label})` : "Workchime");
 }
 
+// Updates: new versions come from GitHub Releases (package.json build.publish, `npm run release:win`).
+// They download in the background and install by themselves, with no prompt: when the app is quit, or sooner
+// once nobody is using it (no call, ring or share picker open, and the window hidden or the computer idle).
+// The web app is loaded from the server, so it is also reloaded once a day while idle to pick up new deploys.
+const UPDATE_CHECK_EVERY = 4 * 3600_000;
+const IDLE_CHECK_EVERY = 5 * 60_000;
+const IDLE_SECONDS = 10 * 60;
+const RELOAD_EVERY = 24 * 3600_000;
+let updateReady = false;
+let loadedAt = Date.now();
+
+// Function declarations, since startHidden needs them before the code above has run
+function hiddenMarker() {
+  return path.join(app.getPath("userData"), "relaunch-hidden");
+}
+
+function takeHiddenMarker() {
+  try {
+    fs.rmSync(hiddenMarker());
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function startUpdates() {
+  setInterval(whenIdle, IDLE_CHECK_EVERY);
+  if (!app.isPackaged) return;
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.on("error", () => {});
+  autoUpdater.on("update-downloaded", () => {
+    updateReady = true;
+    whenIdle();
+  });
+  const check = () => autoUpdater.checkForUpdates().catch(() => {});
+  check();
+  setInterval(check, UPDATE_CHECK_EVERY);
+}
+
+// In a call (its own window, or in the app with sound playing), ringing, or choosing a screen to share
+function busy() {
+  if (ringWin || picking) return true;
+  if (BrowserWindow.getAllWindows().some((w) => w !== win && !w.isDestroyed())) return true;
+  return !!win && !win.isDestroyed() && win.webContents.isCurrentlyAudible();
+}
+
+function whenIdle() {
+  if (busy()) return;
+  const hidden = !win || win.isDestroyed() || !win.isVisible() || win.isMinimized();
+  if (!hidden && powerMonitor.getSystemIdleTime() < IDLE_SECONDS) return;
+  if (updateReady) return installUpdate(hidden);
+  if (win && !win.isDestroyed() && Date.now() - loadedAt > RELOAD_EVERY) {
+    loadedAt = Date.now();
+    win.loadURL(APP_URL);
+  }
+}
+
+function installUpdate(hidden) {
+  if (hidden) {
+    try {
+      fs.writeFileSync(hiddenMarker(), "");
+    } catch {}
+  }
+  quitting = true;
+  // Silent install, then start the new version
+  autoUpdater.quitAndInstall(true, true);
+}
+
 function setOpenAtLogin(openAtLogin) {
   app.setLoginItemSettings({ openAtLogin, openAsHidden: true, args: ["--hidden"] });
 }
@@ -308,6 +380,7 @@ function createWindow() {
     },
   });
   win.loadURL(APP_URL);
+  win.webContents.on("did-finish-load", () => (loadedAt = Date.now()));
 
   win.webContents.setWindowOpenHandler(openHandler);
   win.webContents.on("will-navigate", (e, url) => {
