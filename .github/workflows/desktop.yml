@@ -7,9 +7,10 @@ on:
   workflow_dispatch:
   push:
     tags: ["desktop-v*"]
-    # Pushing desktop changes to main rebuilds the desktop-latest release on its own
+    # Pushing desktop changes to main rebuilds the desktop-latest release on its own. The app icon and tray
+    # icon are rasterized from public/asset/AppIcon.svg at build time, so a logo change rebuilds too.
     branches: [main]
-    paths: ["desktop/**", ".github/workflows/desktop.yml"]
+    paths: ["desktop/**", "public/asset/AppIcon.svg", ".github/workflows/desktop.yml"]
 
 permissions:
   contents: write
