@@ -1,0 +1,36 @@
+<svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+<!-- AppIcon.svg with motion: once a minute the three dots make one full rotation round the triangle,
+     each moving one corner at a time (bottom-left -> top -> bottom-right), then they rest again.
+     The cycle is 60s: still for ~57s, then three 0.5s moves 1.2s apart. A = bottom-left, B = top, C = bottom-right. -->
+<style>
+  .d { animation: 60s cubic-bezier(0.65, 0, 0.35, 1) infinite; }
+  .d1 { transform: translate(19.5px, 42.8px); animation-name: r1; }
+  .d2 { transform: translate(32px, 21.2px); animation-name: r2; }
+  .d3 { transform: translate(44.5px, 42.8px); animation-name: r3; }
+  @keyframes r1 {
+    0%, 95.17% { transform: translate(19.5px, 42.8px); }
+    96%, 97.17% { transform: translate(32px, 21.2px); }
+    98%, 99.17% { transform: translate(44.5px, 42.8px); }
+    100% { transform: translate(19.5px, 42.8px); }
+  }
+  @keyframes r2 {
+    0%, 95.17% { transform: translate(32px, 21.2px); }
+    96%, 97.17% { transform: translate(44.5px, 42.8px); }
+    98%, 99.17% { transform: translate(19.5px, 42.8px); }
+    100% { transform: translate(32px, 21.2px); }
+  }
+  @keyframes r3 {
+    0%, 95.17% { transform: translate(44.5px, 42.8px); }
+    96%, 97.17% { transform: translate(19.5px, 42.8px); }
+    98%, 99.17% { transform: translate(32px, 21.2px); }
+    100% { transform: translate(44.5px, 42.8px); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .d { animation: none; }
+  }
+</style>
+<rect x="0.5" y="0.5" width="63" height="63" rx="15.5" fill="#fff" stroke="#eceff4"/>
+<circle class="d d1" r="10.5" fill="#1c75bc" transform="translate(19.5 42.8)"/>
+<circle class="d d2" r="10.5" fill="#0f2d4d" transform="translate(32 21.2)"/>
+<circle class="d d3" r="10.5" fill="#39b54a" transform="translate(44.5 42.8)"/>
+</svg>

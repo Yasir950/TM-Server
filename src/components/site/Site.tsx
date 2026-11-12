@@ -10,15 +10,17 @@ export const SIGN_UP = "/app?signup";
 
 export const NAVY = "#0f2d4d";
 
-export function Mark({ size = 32, className = "" }: { size?: number; className?: string }) {
+// `animated` has the three dots take turns swapping corners
+export function Mark({ size = 32, className = "", animated }: { size?: number; className?: string; animated?: boolean }) {
+  const src = animated ? "/asset/AppIconAnimated.svg" : "/asset/AppIcon.svg";
   // eslint-disable-next-line @next/next/no-img-element
-  return <img src="/asset/AppIcon.svg" alt="" width={size} height={size} className={`shrink-0 rounded-[25%] ${className}`} />;
+  return <img src={src} alt="" width={size} height={size} className={`shrink-0 rounded-[25%] ${className}`} />;
 }
 
 export function Wordmark({ light }: { light?: boolean }) {
   return (
     <Link href="/" className="inline-flex items-center gap-2.5" aria-label={`${APP_NAME} home`}>
-      <Mark size={32} className="shadow-sm" />
+      <Mark size={32} className="shadow-sm" animated />
       <span className={`text-xl font-semibold tracking-[-0.02em] ${light ? "text-white" : "text-zinc-900"}`}>{APP_NAME}</span>
     </Link>
   );

@@ -201,9 +201,7 @@ export function ProjectWindow() {
     <div className="overflow-hidden rounded-2xl bg-white shadow-2xl ring-1 shadow-black/30 ring-black/10">
       {/* Title bar */}
       <div className="flex h-10 items-center gap-2 px-4" style={{ background: NAVY }}>
-        <span className="h-3 w-3 rounded-full bg-[#ff5f57]" />
-        <span className="h-3 w-3 rounded-full bg-[#febc2e]" />
-        <span className="h-3 w-3 rounded-full bg-[#28c840]" />
+        <Mark size={22} />
         <div className="mx-auto hidden w-full max-w-md items-center gap-2 rounded-md bg-white/10 px-3 py-1 text-xs text-white/60 sm:flex">
           <Icon name="search" size={13} />
           Search Acme Studio
@@ -331,9 +329,7 @@ export function AppWindow() {
     <div className="overflow-hidden rounded-2xl bg-white shadow-2xl ring-1 shadow-black/30 ring-black/10">
       {/* Title bar */}
       <div className="flex h-10 items-center gap-2 px-4" style={{ background: NAVY }}>
-        <span className="h-3 w-3 rounded-full bg-[#ff5f57]" />
-        <span className="h-3 w-3 rounded-full bg-[#febc2e]" />
-        <span className="h-3 w-3 rounded-full bg-[#28c840]" />
+        <Mark size={22} />
         <div className="mx-auto hidden w-full max-w-md items-center gap-2 rounded-md bg-white/10 px-3 py-1 text-xs text-white/60 sm:flex">
           <Icon name="search" size={13} />
           Search Acme Studio
@@ -559,9 +555,7 @@ export function Devices() {
     <div className="relative mx-auto flex max-w-md items-end justify-center gap-4">
       <div className="w-full overflow-hidden rounded-xl bg-white shadow-xl ring-1 ring-black/10">
         <div className="flex h-6 items-center gap-1.5 px-3" style={{ background: NAVY }}>
-          <span className="h-2 w-2 rounded-full bg-white/40" />
-          <span className="h-2 w-2 rounded-full bg-white/40" />
-          <span className="h-2 w-2 rounded-full bg-white/40" />
+          <Mark size={14} />
         </div>
         <div className="flex h-44">
           <div className="w-10" style={{ background: NAVY }} />

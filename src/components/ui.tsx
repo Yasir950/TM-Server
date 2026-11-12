@@ -57,7 +57,7 @@ export function StatusBadge({ profile, withText }: { profile?: Profile; withText
 export function Logo({ height = 40 }: { height?: number }) {
   return (
     <span className="inline-flex items-center select-none" style={{ height, gap: height * 0.28 }}>
-      <Mark size={height * 0.86} className="rounded-[25%] shadow-sm" />
+      <Mark size={height * 0.86} className="rounded-[25%] shadow-sm" animated />
       <span className="font-semibold tracking-[-0.02em] text-zinc-900" style={{ fontSize: height * 0.52 }}>
         {APP_NAME}
       </span>
@@ -65,10 +65,11 @@ export function Logo({ height = 40 }: { height?: number }) {
   );
 }
 
-// The app icon on its own
-export function Mark({ size = 24, className = "" }: { size?: number; className?: string }) {
+// The app icon on its own; `animated` has the three dots take turns swapping corners
+export function Mark({ size = 24, className = "", animated }: { size?: number; className?: string; animated?: boolean }) {
+  const src = animated ? "/asset/AppIconAnimated.svg" : "/asset/AppIcon.svg";
   // eslint-disable-next-line @next/next/no-img-element
-  return <img src="/asset/AppIcon.svg" alt="" width={size} height={size} className={`shrink-0 select-none ${className}`} />;
+  return <img src={src} alt="" width={size} height={size} className={`shrink-0 select-none ${className}`} />;
 }
 
 // Docked right pane beside the conversation, like Slack's profile and channel details: the main view narrows to make room

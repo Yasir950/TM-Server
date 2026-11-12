@@ -1,20 +1,7 @@
 <svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
-<rect width="64" height="64" rx="16" fill="#fff"/>
-<!-- Hash mark: blue and green bars -->
-<rect x="16" y="10" width="10" height="44" rx="5" fill="#1c75bc"/>
-<rect x="38" y="10" width="10" height="44" rx="5" fill="#39b54a"/>
-<rect x="10" y="16" width="44" height="10" rx="5" fill="#39b54a"/>
-<rect x="10" y="38" width="44" height="10" rx="5" fill="#1c75bc"/>
-<!-- Chat bubble, outlined in the background white so it reads over the bars -->
-<g fill="#39b54a" stroke="#fff" stroke-width="3.5" stroke-linejoin="round">
-<rect x="20" y="24" width="24" height="16" rx="6"/>
-<path d="M34 38 L42 45 L40 38 Z"/>
-</g>
-<rect x="20" y="24" width="24" height="16" rx="6" fill="#39b54a"/>
-<path d="M34 38 L42 45 L40 38 Z" fill="#39b54a"/>
-<g fill="#1c75bc">
-<circle cx="26" cy="32" r="2.1"/>
-<circle cx="32" cy="32" r="2.1"/>
-<circle cx="38" cy="32" r="2.1"/>
-</g>
+<rect x="0.5" y="0.5" width="63" height="63" rx="15.5" fill="#fff" stroke="#eceff4"/>
+<!-- Three dots in a triangle, in the app's theme colours: navy on top, blue and green below -->
+<circle cx="19.5" cy="42.8" r="10.5" fill="#1c75bc"/>
+<circle cx="32" cy="21.2" r="10.5" fill="#0f2d4d"/>
+<circle cx="44.5" cy="42.8" r="10.5" fill="#39b54a"/>
 </svg>

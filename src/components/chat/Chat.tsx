@@ -288,7 +288,7 @@ function AppMenu() {
   return (
     <div className="relative" ref={ref}>
       <button onClick={() => setOpen(!open)} title={APP_NAME} className="block rounded-[25%] transition hover:opacity-90">
-        <Mark size={32} className="rounded-[25%]" />
+        <Mark size={32} className="rounded-[25%]" animated />
       </button>
       {open && (
         <div className="tm-pop tm-float absolute top-11 left-0 z-40 w-64 rounded-2xl bg-white p-2 text-sm">

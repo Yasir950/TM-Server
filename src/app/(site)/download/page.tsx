@@ -47,7 +47,7 @@ export default function Download() {
     <>
       <section className="bg-gradient-to-b from-tm-blue-light/70 to-white">
         <div className="mx-auto max-w-7xl px-4 pt-20 pb-10 text-center sm:px-6 sm:pt-24 lg:px-8">
-          <Mark size={72} className="mx-auto shadow-lg" />
+          <Mark size={72} className="mx-auto shadow-lg" animated />
           <h1 className="mx-auto mt-8 max-w-3xl text-4xl font-bold tracking-tight sm:text-6xl">Get {APP_NAME} on every device</h1>
           <p className="mx-auto mt-6 max-w-2xl text-lg leading-8 text-zinc-600">
             Install the desktop app for the best experience, or use {APP_NAME} right in your browser. Your messages stay in sync everywhere.
