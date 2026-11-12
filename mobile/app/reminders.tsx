@@ -4,6 +4,7 @@ import { supabase, type Reminder } from "@/lib/supabase";
 import { dayLabel, timeOf } from "@/lib/format";
 import WhenPicker from "@/components/WhenPicker";
 import { Button, C, Empty, Label, field } from "@/components/ui";
+import { Icon } from "@/components/Icon";
 
 // Reminders: the database delivers them as a message from the app (fire_reminders), also via /remind in any conversation
 export default function Reminders() {
@@ -38,7 +39,7 @@ export default function Reminders() {
   const done = items?.filter((r) => r.done_at).reverse() ?? [];
   const row = (r: Reminder) => (
     <View key={r.id} style={{ flexDirection: "row", alignItems: "center", gap: 12, borderWidth: 1, borderColor: C.line, borderRadius: 12, padding: 12 }}>
-      <Text style={{ fontSize: 20 }}>{r.done_at ? "✅" : "⏰"}</Text>
+      <Icon name={r.done_at ? "check-circle" : "clock"} size={20} color={r.done_at ? C.green : C.muted} />
       <View style={{ flex: 1 }}>
         <Text style={[{ fontSize: 15 }, !!r.done_at && { color: C.muted, textDecorationLine: "line-through" }]}>{r.text}</Text>
         <Text style={{ color: C.muted, fontSize: 12 }}>
@@ -58,7 +59,7 @@ export default function Reminders() {
       <WhenPicker value={at} onChange={setAt} />
       <Button title="Add reminder" disabled={!text.trim()} onPress={add} />
       <Text style={{ color: C.muted, fontSize: 12 }}>Or type /remind me in 20m &lt;text&gt; in any conversation.</Text>
-      {items?.length === 0 && <Empty icon="⏰" text="No reminders yet." />}
+      {items?.length === 0 && <Empty icon="clock" text="No reminders yet." />}
       {upcoming.map(row)}
       {done.length > 0 && <Label>Completed</Label>}
       {done.map(row)}

@@ -77,7 +77,7 @@ export default function Projects() {
           }}
         />
       )}
-      {!projects.length && <Empty icon="📋" text="No projects yet. Create one to track work on a board." />}
+      {!projects.length && <Empty icon="trello" text="No projects yet. Create one to track work on a board." />}
       {active.map(card)}
       {archived.length > 0 && <Label>Archived</Label>}
       {archived.map(card)}

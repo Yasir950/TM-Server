@@ -823,7 +823,7 @@ export function ChatProvider({ session, children }: { session: Session; children
           setRing({ channelId: m.channel_id, from: m.created_by, title: m.title, meeting: m.id });
           if (!quiet) window.workchime?.ring({ caller: m.title, where: `Organized by ${displayName(profiles[m.created_by])}`, avatar: null, meeting: true });
           if (!canNotify || document.hasFocus() || window.workchime?.onRingAction) continue;
-          const n = new Notification(`📅 ${m.title} is starting`, { icon: "/asset/AppIcon.svg", body: "Click to join the call", tag: `meeting:${m.id}`, requireInteraction: true });
+          const n = new Notification(`${m.title} is starting`, { icon: "/asset/AppIcon.svg", body: "Click to join the call", tag: `meeting:${m.id}`, requireInteraction: true });
           n.onclick = () => {
             focusApp();
             n.close();

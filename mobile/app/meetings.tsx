@@ -5,6 +5,7 @@ import { useChat } from "@/lib/store";
 import { useNow } from "@/lib/useNow";
 import { dayLabel, timeOf } from "@/lib/format";
 import { Avatar, C, Empty, Label } from "@/components/ui";
+import { Icon } from "@/components/Icon";
 
 function dayOf(iso: string) {
   const tomorrow = new Date();
@@ -30,7 +31,7 @@ export default function Meetings() {
           ),
         }}
       />
-      {mine.length === 0 && <Empty icon="📅" text="No meetings yet. Schedule one and everyone invited is called in when it starts." />}
+      {mine.length === 0 && <Empty icon="calendar" text="No meetings yet. Schedule one and everyone invited is called in when it starts." />}
       {current.map((m) => (
         <MeetingCard key={m.id} m={m} now={now} />
       ))}
@@ -101,8 +102,9 @@ function MeetingCard({ m, now }: { m: Meeting; now: number }) {
         </View>
         <View style={{ flexDirection: "row", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
           {live && (
-            <Pressable onPress={() => router.push(`/call/${m.channel_id}`)} style={{ backgroundColor: C.green, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 6 }}>
-              <Text style={{ color: "#fff", fontWeight: "700" }}>🎧 Join</Text>
+            <Pressable onPress={() => router.push(`/call/${m.channel_id}`)} style={{ flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: C.green, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 6 }}>
+              <Icon name="headphones" size={14} color="#fff" />
+              <Text style={{ color: "#fff", fontWeight: "700" }}>Join</Text>
             </Pressable>
           )}
           {!over &&

@@ -5,6 +5,7 @@ import { supabase, displayName, type Channel, type Membership, type Message, typ
 import { timeOf, fileSize } from "@/lib/format";
 import { Avatar, askText, Modal, RowSkeleton, SidePanel, StatusBadge, Tabs, btn, btnGhost, input } from "../ui";
 import { useChat } from "./store";
+import { ChannelIcon, Icon, type IconName } from "../icons";
 
 const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9_\s-]/g, "");
 
@@ -88,7 +89,7 @@ export function BrowseChannels({ onClose }: { onClose: () => void }) {
           <li key={c.id} className="flex items-center gap-3 rounded-xl px-3 py-2.5 transition hover:bg-tm-surface">
             <div className="min-w-0 flex-1">
               <div className="font-medium">
-                <span className="text-zinc-400">{c.kind === "private" ? "🔒" : "#"}</span> {c.name}
+                <ChannelIcon kind={c.kind} size={14} className="inline align-[-2px] text-zinc-400" /> {c.name}
               </div>
               <div className="truncate text-xs text-zinc-500">
                 {c.channel_members[0]?.count ?? 0} members{c.topic && ` · ${c.topic}`}
@@ -169,7 +170,7 @@ export function NewDM({ onClose }: { onClose: () => void }) {
 type Tab = "about" | "members" | "pinned" | "files" | "integrations";
 
 export function ChannelDetails({ channel, onClose }: { channel: Channel; onClose: () => void }) {
-  const { me, profiles, online, away, memberships, reload, setActive, updateMembership, channelTitle, showMember } = useChat();
+  const { me, profiles, online, away, memberships, reload, setActive, updateMembership, channelTitle, showMember, superAdmin } = useChat();
   const [tab, setTab] = useState<Tab>("about");
   const [members, setMembers] = useState<string[]>([]);
   const [topic, setTopic] = useState(channel.topic);
@@ -229,10 +230,23 @@ export function ChannelDetails({ channel, onClose }: { channel: Channel; onClose
     ["pinned", "Pinned"],
     ["files", "Files"],
   ];
-  if (!isDM) tabs.push(["integrations", "Integrations"]);
+  if (!isDM && superAdmin) tabs.push(["integrations", "Integrations"]);
 
   return (
-    <SidePanel wide title={isDM ? channelTitle(channel) : `${channel.kind === "private" ? "🔒" : "#"} ${channel.name}`} onClose={onClose}>
+    <SidePanel
+      wide
+      title={
+        isDM ? (
+          channelTitle(channel)
+        ) : (
+          <>
+            <ChannelIcon kind={channel.kind} size={17} className="text-zinc-500" />
+            <span className="truncate">{channel.name}</span>
+          </>
+        )
+      }
+      onClose={onClose}
+    >
       <Tabs tabs={tabs} value={tab} onChange={setTab} />
       <div className="tm-fade min-h-64" key={tab}>
         {tab === "about" && (
@@ -267,10 +281,16 @@ export function ChannelDetails({ channel, onClose }: { channel: Channel; onClose
             {error && <p className="text-sm text-red-600">{error}</p>}
             <div className="flex flex-wrap gap-2 pt-2">
               <button className={btnGhost} onClick={() => updateMembership(channel.id, { starred: !mem?.starred })}>
-                {mem?.starred ? "★ Unstar" : "☆ Star"}
+                <span className="inline-flex items-center gap-1.5">
+                  <Icon name="star" size={15} filled={mem?.starred} />
+                  {mem?.starred ? "Unstar" : "Star"}
+                </span>
               </button>
               <button className={btnGhost} onClick={() => updateMembership(channel.id, { muted: !mem?.muted })}>
-                {mem?.muted ? "🔔 Unmute" : "🔕 Mute"}
+                <span className="inline-flex items-center gap-1.5">
+                  <Icon name={mem?.muted ? "bell" : "bellOff"} size={15} />
+                  {mem?.muted ? "Unmute" : "Mute"}
+                </span>
               </button>
               {isDM && members.length > 2 && (
                 <button className={btnGhost} onClick={convert}>
@@ -280,7 +300,10 @@ export function ChannelDetails({ channel, onClose }: { channel: Channel; onClose
               {!isDM && (
                 <>
                   <button className={btnGhost} onClick={archive}>
-                    {channel.archived ? "Unarchive" : "🗄️ Archive"}
+                    <span className="inline-flex items-center gap-1.5">
+                      <Icon name="archive" size={15} />
+                      {channel.archived ? "Unarchive" : "Archive"}
+                    </span>
                   </button>
                   <button className={`${btnGhost} text-red-600`} onClick={leave}>
                     Leave channel
@@ -316,7 +339,7 @@ export function ChannelDetails({ channel, onClose }: { channel: Channel; onClose
 
         {tab === "pinned" && <PinnedList channelId={channel.id} />}
         {tab === "files" && <FilesList channelId={channel.id} />}
-        {tab === "integrations" && <Webhooks channelId={channel.id} />}
+        {tab === "integrations" && superAdmin && <Webhooks channelId={channel.id} />}
       </div>
       {adding && (
         <Modal title={`Add people to #${channel.name}`} onClose={() => setAdding(null)}>
@@ -346,7 +369,7 @@ function PinnedList({ channelId }: { channelId: string }) {
       .then(({ data }) => setPins((data as Message[]) ?? []));
   }, [channelId]);
   if (!pins) return <RowSkeleton count={3} size={0} />;
-  if (!pins.length) return <Empty icon="📌" text="No pinned messages yet. Use ⋯ → Pin on any message." />;
+  if (!pins.length) return <Empty icon="pin" text="No pinned messages yet. Use ⋯ → Pin on any message." />;
   return (
     <ul className="max-h-80 space-y-2 overflow-y-auto">
       {pins.map((m) => (
@@ -355,7 +378,7 @@ function PinnedList({ channelId }: { channelId: string }) {
             <div className="text-xs text-zinc-400">
               {m.bot_name ?? displayName(profiles[m.user_id])} · {timeOf(m.created_at)}
             </div>
-            <div className="line-clamp-2 text-sm">{m.body || "📎 Attachment"}</div>
+            <div className="line-clamp-2 text-sm">{m.body || "Attachment"}</div>
           </button>
         </li>
       ))}
@@ -379,7 +402,7 @@ function FilesList({ channelId }: { channelId: string }) {
   }, [channelId]);
   if (!msgs) return <RowSkeleton count={4} size={36} />;
   const files = msgs.flatMap((m) => m.attachments.map((a) => ({ a, m })));
-  if (!files.length) return <Empty icon="📁" text="No files shared here yet." />;
+  if (!files.length) return <Empty icon="folder" text="No files shared here yet." />;
   return (
     <ul className="max-h-80 space-y-1 overflow-y-auto">
       {files.map(({ a, m }) => (
@@ -447,7 +470,7 @@ function Webhooks({ channelId }: { channelId: string }) {
         {hooks.map((h) => (
           <li key={h.id} className="tm-fade rounded-xl border border-tm-line p-3">
             <div className="flex items-center gap-2">
-              <span className="text-lg">⚡</span>
+              <Icon name="zap" size={17} className="text-zinc-500" />
               <span className="font-medium">{h.name}</span>
               <span className="text-xs text-zinc-400">by {displayName(profiles[h.created_by])}</span>
               <button onClick={() => remove(h.id)} className="ml-auto rounded-lg px-2 py-0.5 text-xs text-red-600 transition hover:bg-red-50">
@@ -471,9 +494,9 @@ function Webhooks({ channelId }: { channelId: string }) {
   );
 }
 
-const Empty = ({ icon, text }: { icon: string; text: string }) => (
+const Empty = ({ icon, text }: { icon: IconName; text: string }) => (
   <div className="flex flex-col items-center gap-2 py-12 text-center text-sm text-zinc-400">
-    <span className="text-3xl opacity-60">{icon}</span>
+    <Icon name={icon} size={30} className="text-zinc-300" />
     {text}
   </div>
 );

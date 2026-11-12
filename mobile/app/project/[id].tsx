@@ -6,6 +6,7 @@ import { useChat } from "@/lib/store";
 import { STATUSES, TYPES, canManage, useLiveTasks } from "@/lib/tasks";
 import TaskRow from "@/components/TaskRow";
 import { Avatar, C, Empty, Segmented, field } from "@/components/ui";
+import { Icon } from "@/components/Icon";
 
 // A project's board: one status column at a time (tabs with counts), search and filters
 export default function ProjectBoard() {
@@ -17,7 +18,7 @@ export default function ProjectBoard() {
   const [q, setQ] = useState("");
   const [people, setPeople] = useState<string[]>([]);
   const [type, setType] = useState<TaskType | "">("");
-  if (!project) return <Empty icon="📋" text="This project was deleted, or you're not in it." />;
+  if (!project) return <Empty icon="trello" text="This project was deleted, or you're not in it." />;
 
   const inProject = project.project_members.some((m) => m.user_id === uid);
   const canAdd = !project.archived && (inProject || canManage(me, project));
@@ -47,11 +48,11 @@ export default function ProjectBoard() {
             <View style={{ flexDirection: "row", gap: 18 }}>
               {canAdd && (
                 <Pressable onPress={() => router.push(`/new-task?p=${id}&s=${status}`)} hitSlop={10}>
-                  <Text style={{ color: "#fff", fontSize: 24 }}>＋</Text>
+                  <Icon name="plus" size={24} color="#fff" />
                 </Pressable>
               )}
               <Pressable onPress={() => router.push(`/project-settings/${id}`)} hitSlop={10}>
-                <Text style={{ color: "#fff", fontSize: 20 }}>⚙︎</Text>
+                <Icon name="settings" size={21} color="#fff" />
               </Pressable>
             </View>
           ),
@@ -69,10 +70,9 @@ export default function ProjectBoard() {
             <Text style={{ fontSize: 12 }}>Unassigned</Text>
           </Pressable>
           {TYPES.map((t) => (
-            <Pressable key={t.id} onPress={() => setType(type === t.id ? "" : t.id)} style={{ borderWidth: 1, borderColor: type === t.id ? C.blue : C.line, borderRadius: 14, paddingHorizontal: 10, paddingVertical: 5 }}>
-              <Text style={{ fontSize: 12 }}>
-                {t.icon} {t.label}
-              </Text>
+            <Pressable key={t.id} onPress={() => setType(type === t.id ? "" : t.id)} style={{ flexDirection: "row", alignItems: "center", gap: 4, borderWidth: 1, borderColor: type === t.id ? C.blue : C.line, borderRadius: 14, paddingHorizontal: 10, paddingVertical: 5 }}>
+              <Icon name={t.icon} size={12} color={t.color} />
+              <Text style={{ fontSize: 12 }}>{t.label}</Text>
             </Pressable>
           ))}
         </ScrollView>
@@ -82,7 +82,7 @@ export default function ProjectBoard() {
         data={column}
         keyExtractor={(t) => t.id}
         contentContainerStyle={{ padding: 12, paddingTop: 0, gap: 8 }}
-        ListEmptyComponent={tasks ? <Empty icon="🗂" text={canAdd ? "Nothing here. Tap ＋ to add a task." : "Nothing here."} /> : null}
+        ListEmptyComponent={tasks ? <Empty icon="layers" text={canAdd ? "Nothing here. Tap + to add a task." : "Nothing here."} /> : null}
         renderItem={({ item }) => <TaskRow task={item} project={project} onStatus={(s) => update(item.id, { status: s, position: Date.now() / 1000 })} />}
       />
     </View>

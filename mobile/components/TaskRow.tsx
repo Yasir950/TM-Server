@@ -5,6 +5,7 @@ import { useChat } from "@/lib/store";
 import { STATUSES, dueLabel, overdue, priorityOf, statusColor, statusLabel, typeOf } from "@/lib/tasks";
 import Choice from "./Choice";
 import { Avatar, C } from "./ui";
+import { Icon } from "./Icon";
 
 // A task in a board column, list or My tasks; the status chip moves it
 export default function TaskRow({ task, project, onStatus }: { task: Task; project?: Project; onStatus?: (s: TaskStatus) => void }) {
@@ -14,17 +15,22 @@ export default function TaskRow({ task, project, onStatus }: { task: Task; proje
     <Pressable onPress={() => router.push(`/task/${task.id}`)} style={({ pressed }) => [{ borderWidth: 1, borderColor: C.line, borderRadius: 12, padding: 12, gap: 8, backgroundColor: pressed ? "#f8f8f8" : "#fff" }]}>
       <Text style={[{ fontSize: 15 }, task.status === "done" && { color: C.muted, textDecorationLine: "line-through" }]}>{task.title}</Text>
       <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-        <Text>{typeOf(task.type).icon}</Text>
+        <Icon name={typeOf(task.type).icon} size={14} color={typeOf(task.type).color} />
         <Text style={{ color: C.muted, fontSize: 12, fontWeight: "600" }}>
           {project ? `${project.key}-${task.number}` : `#${task.number}`}
         </Text>
-        <Text style={{ fontSize: 12 }}>{priorityOf(task.priority).icon}</Text>
+        <Icon name={priorityOf(task.priority).icon} size={14} color={priorityOf(task.priority).color} />
         {task.labels.slice(0, 2).map((l) => (
           <Text key={l} style={{ fontSize: 11, backgroundColor: "#f1f1f1", borderRadius: 4, paddingHorizontal: 5, overflow: "hidden" }}>
             {l}
           </Text>
         ))}
-        {task.due_date && <Text style={{ fontSize: 12, color: overdue(task) ? C.red : C.muted }}>📅 {dueLabel(task.due_date)}</Text>}
+        {task.due_date && (
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 3 }}>
+            <Icon name="calendar" size={12} color={overdue(task) ? C.red : C.muted} />
+            <Text style={{ fontSize: 12, color: overdue(task) ? C.red : C.muted }}>{dueLabel(task.due_date)}</Text>
+          </View>
+        )}
         <View style={{ flex: 1 }} />
         {onStatus ? (
           <View style={{ backgroundColor: bg, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 }}>

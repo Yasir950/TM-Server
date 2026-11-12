@@ -105,7 +105,9 @@ export default function MessageItem({ msg, reactions, grouped, inThread, highlig
         ) : msg.bot_name && BUILT_IN_BOTS.has(msg.bot_name) ? (
           <Mark size={36} className="rounded-[30%] shadow-sm" />
         ) : msg.bot_name ? (
-          <div className="flex h-9 w-9 items-center justify-center rounded-[30%] bg-gradient-to-br from-tm-blue to-tm-green text-lg text-white">⚡</div>
+          <div className="flex h-9 w-9 items-center justify-center rounded-[30%] bg-gradient-to-br from-tm-blue to-tm-green text-white">
+            <Icon name="zap" size={18} />
+          </div>
         ) : (
           <Avatar profile={author} />
         )}

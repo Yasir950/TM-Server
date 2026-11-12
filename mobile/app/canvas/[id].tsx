@@ -6,6 +6,7 @@ import { useChat } from "@/lib/store";
 import { timeOf } from "@/lib/format";
 import Body from "@/components/Body";
 import { C } from "@/components/ui";
+import { Icon } from "@/components/Icon";
 
 type Row = { channel_id: string; body: string; updated_by: string | null; updated_at: string };
 const TASK = /^(\s*)- \[( |x)\] (.*)$/i;
@@ -85,7 +86,7 @@ export default function Canvas() {
             if (t)
               return (
                 <Pressable key={i} onPress={() => toggle(i)} style={{ flexDirection: "row", gap: 8, paddingLeft: t[1].length * 8 }}>
-                  <Text style={{ fontSize: 18, color: t[2].trim() ? C.green : "#aaa" }}>{t[2].trim() ? "☑" : "☐"}</Text>
+                  <Icon name={t[2].trim() ? "check-square" : "square"} size={18} color={t[2].trim() ? C.green : "#aaa"} />
                   <View style={{ flex: 1, opacity: t[2].trim() ? 0.5 : 1 }}>
                     <Body text={t[3]} />
                   </View>

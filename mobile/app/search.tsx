@@ -110,7 +110,7 @@ export default function Search() {
           keyExtractor={(m) => m.id}
           keyboardShouldPersistTaps="handled"
           ListHeaderComponent={results ? <Text style={{ color: C.muted, paddingHorizontal: 16 }}>{`${results.length}${results.length === 50 ? "+" : ""} messages`}</Text> : null}
-          ListEmptyComponent={results ? <Empty icon="🔍" text="No messages matched. Try fewer words, or modifiers like from:@name, in:#channel, has:link." /> : null}
+          ListEmptyComponent={results ? <Empty icon="search" text="No messages matched. Try fewer words, or modifiers like from:@name, in:#channel, has:link." /> : null}
           renderItem={({ item }) => <ResultCard m={item} />}
         />
       )}

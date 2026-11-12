@@ -8,6 +8,7 @@ import { REACTIONS, useCall, type Person } from "@/lib/calls";
 import { useNow } from "@/lib/useNow";
 import PeoplePicker from "@/components/PeoplePicker";
 import { Avatar, Button, C } from "@/components/ui";
+import { Icon, type IconName } from "@/components/Icon";
 
 const clock = (sec: number) => `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, "0")}`;
 
@@ -38,8 +39,8 @@ export default function CallScreen() {
         <Text style={s.sub}>{call.callName(id)}</Text>
         {from && (
           <View style={{ flexDirection: "row", gap: 40, marginTop: 30 }}>
-            <Round color={C.red} icon="✕" label="Decline" onPress={() => (call.dismissRing(true), router.back())} />
-            <Round color={C.green} icon="📞" label="Answer" onPress={() => call.join(id)} />
+            <Round color={C.red} icon="phone-off" label="Decline" onPress={() => (call.dismissRing(true), router.back())} />
+            <Round color={C.green} icon="phone" label="Answer" onPress={() => call.join(id)} />
           </View>
         )}
       </View>
@@ -62,14 +63,14 @@ export default function CallScreen() {
       {Platform.OS === "ios" && <ScreenCapturePickerView ref={picker} />}
       <View style={s.header}>
         <Pressable onPress={() => router.back()} hitSlop={10}>
-          <Text style={{ color: "#fff", fontSize: 22 }}>⌄</Text>
+          <Icon name="chevron-down" size={26} color="#fff" />
         </Pressable>
         <View style={{ flex: 1, alignItems: "center" }}>
           <Text style={s.title}>{call.callName(id)}</Text>
           <Text style={s.sub}>{call.connectedAt ? clock((now - call.connectedAt) / 1000) : others.length ? "Connecting…" : "Calling…"}</Text>
         </View>
         <Pressable onPress={() => setInviting([])} hitSlop={10}>
-          <Text style={{ color: "#fff", fontSize: 20 }}>👥＋</Text>
+          <Icon name="user-plus" size={22} color="#fff" />
         </Pressable>
       </View>
       {!!call.notice && <Text style={s.notice}>{call.notice}</Text>}
@@ -93,14 +94,14 @@ export default function CallScreen() {
         </View>
       )}
       <View style={s.controls}>
-        <Round color={call.me.muted ? "#fff" : "#333"} dark={call.me.muted} icon={call.me.muted ? "🔇" : "🎙"} label={call.me.muted ? "Unmute" : "Mute"} onPress={() => call.toggle("muted")} />
-        <Round color={call.me.camera ? "#fff" : "#333"} dark={call.me.camera} icon="🎥" label={call.me.camera ? "Stop video" : "Video"} onPress={() => call.toggle("camera")} />
-        {call.me.camera && <Round color="#333" icon="🔄" label="Flip" onPress={call.flipCamera} />}
-        <Round color={call.speaker ? "#fff" : "#333"} dark={call.speaker} icon="🔊" label="Speaker" onPress={() => call.setSpeaker(!call.speaker)} />
-        <Round color={call.me.sharing ? "#fff" : "#333"} dark={call.me.sharing} icon="🖥" label={call.me.sharing ? "Stop share" : "Share"} onPress={() => call.shareScreen(showPicker)} />
-        <Round color={call.me.hand ? "#fff" : "#333"} dark={call.me.hand} icon="✋" label="Hand" onPress={() => call.toggle("hand")} />
-        <Round color="#333" icon="😀" label="React" onPress={() => setReacting(!reacting)} />
-        <Round color={C.red} icon="✕" label="Leave" onPress={() => (call.join(null), router.back())} />
+        <Round color={call.me.muted ? "#fff" : "#333"} dark={call.me.muted} icon={call.me.muted ? "mic-off" : "mic"} label={call.me.muted ? "Unmute" : "Mute"} onPress={() => call.toggle("muted")} />
+        <Round color={call.me.camera ? "#fff" : "#333"} dark={call.me.camera} icon={call.me.camera ? "video" : "video-off"} label={call.me.camera ? "Stop video" : "Video"} onPress={() => call.toggle("camera")} />
+        {call.me.camera && <Round color="#333" icon="refresh-cw" label="Flip" onPress={call.flipCamera} />}
+        <Round color={call.speaker ? "#fff" : "#333"} dark={call.speaker} icon="volume-2" label="Speaker" onPress={() => call.setSpeaker(!call.speaker)} />
+        <Round color={call.me.sharing ? "#fff" : "#333"} dark={call.me.sharing} icon="monitor" label={call.me.sharing ? "Stop share" : "Share"} onPress={() => call.shareScreen(showPicker)} />
+        <Round color={call.me.hand ? "#fff" : "#333"} dark={call.me.hand} icon="hand" label="Hand" onPress={() => call.toggle("hand")} />
+        <Round color="#333" icon="smile" label="React" onPress={() => setReacting(!reacting)} />
+        <Round color={C.red} icon="phone-off" label="Leave" onPress={() => (call.join(null), router.back())} />
       </View>
     </View>
   );
@@ -121,20 +122,22 @@ function Tile({ person, tall }: { person: Person; tall: boolean }) {
         <Avatar p={profiles[person.user]} size={tall ? 96 : 64} />
       )}
       {!!person.reaction && <Text style={s.reaction}>{person.reaction}</Text>}
-      <Text style={s.name}>
-        {person.state.hand ? "✋ " : ""}
-        {person.state.muted ? "🔇 " : ""}
-        {person.self ? "You" : displayName(profiles[person.user])}
-        {person.state.sharing ? " · sharing screen" : ""}
-      </Text>
+      <View style={s.name}>
+        {person.state.hand && <Icon name="hand" size={13} color="#fff" />}
+        {person.state.muted && <Icon name="mic-off" size={13} color="#fff" />}
+        <Text style={{ color: "#fff", fontWeight: "600" }}>
+          {person.self ? "You" : displayName(profiles[person.user])}
+          {person.state.sharing ? " · sharing screen" : ""}
+        </Text>
+      </View>
     </View>
   );
 }
 
-const Round = ({ color, icon, label, onPress, dark }: { color: string; icon: string; label: string; onPress: () => void; dark?: boolean }) => (
+const Round = ({ color, icon, label, onPress, dark }: { color: string; icon: IconName; label: string; onPress: () => void; dark?: boolean }) => (
   <Pressable onPress={onPress} style={{ alignItems: "center", gap: 4, width: 56 }}>
     <View style={{ width: 52, height: 52, borderRadius: 26, backgroundColor: color, alignItems: "center", justifyContent: "center" }}>
-      <Text style={{ fontSize: 22, color: dark ? "#000" : "#fff" }}>{icon}</Text>
+      <Icon name={icon} size={22} color={dark ? "#000" : "#fff"} />
     </View>
     <Text style={{ color: "#ccc", fontSize: 11 }}>{label}</Text>
   </Pressable>
@@ -147,7 +150,7 @@ const s = StyleSheet.create({
   sub: { color: "#aaa", fontSize: 13 },
   notice: { color: "#fff", backgroundColor: "#333", textAlign: "center", padding: 8, marginHorizontal: 16, borderRadius: 8 },
   tile: { backgroundColor: "#222", borderRadius: 14, alignItems: "center", justifyContent: "center", overflow: "hidden" },
-  name: { position: "absolute", left: 10, bottom: 8, color: "#fff", fontWeight: "600", backgroundColor: "rgba(0,0,0,0.45)", paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6, overflow: "hidden" },
+  name: { position: "absolute", left: 10, bottom: 8, flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: "rgba(0,0,0,0.45)", paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6, overflow: "hidden" },
   reaction: { position: "absolute", top: 10, right: 12, fontSize: 36 },
   reactions: { flexDirection: "row", justifyContent: "space-around", padding: 10, backgroundColor: "#222", marginHorizontal: 12, borderRadius: 14 },
   controls: { flexDirection: "row", flexWrap: "wrap", justifyContent: "center", gap: 6, paddingVertical: 16, paddingBottom: 36 },

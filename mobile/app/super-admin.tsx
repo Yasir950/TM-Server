@@ -5,6 +5,7 @@ import { supabase, fmtBytes, type PlanId, type Profile, type Role } from "@/lib/
 import { useChat } from "@/lib/store";
 import Choice from "@/components/Choice";
 import { Avatar, C, GhostButton, Segmented, field } from "@/components/ui";
+import { Icon, channelIcon } from "@/components/Icon";
 
 // Port of SuperAdminView (src/components/chat/SuperAdmin.tsx): every company and user on the platform
 type Stats = { companies: number; companies_30d: number; users: number; users_30d: number; channels: number; messages: number; messages_7d: number; active_7d: number; daily_companies: { day: string; count: number }[] };
@@ -155,7 +156,7 @@ function Companies({ notify }: { notify: (s: string) => void }) {
               />
             </View>
             <GhostButton title="Open" onPress={() => enter(c.id)} />
-            <GhostButton title="🗑" danger onPress={() => setDeleting(deleting?.id === c.id ? null : { id: c.id, text: "" })} />
+            <GhostButton icon="trash-2" title="" danger onPress={() => setDeleting(deleting?.id === c.id ? null : { id: c.id, text: "" })} />
           </View>
           {deleting?.id === c.id && (
             <View style={{ gap: 6 }}>
@@ -170,7 +171,7 @@ function Companies({ notify }: { notify: (s: string) => void }) {
             ) : (
               chans?.map((ch) => (
                 <Pressable key={ch.id} onPress={() => enter(c.id, ch.id)} style={{ flexDirection: "row", gap: 8, paddingVertical: 4 }}>
-                  <Text style={{ width: 18, color: C.muted }}>{ch.kind === "public" ? "#" : ch.kind === "private" ? "🔒" : "@"}</Text>
+                  <Icon name={channelIcon(ch.kind)} size={14} style={{ width: 18 }} />
                   <Text style={{ flex: 1 }} numberOfLines={1}>
                     {ch.kind === "dm" ? ch.people || "Empty conversation" : ch.name}
                     {ch.archived ? " (archived)" : ""}

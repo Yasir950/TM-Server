@@ -66,7 +66,7 @@ export default function MyTasks() {
         <Text style={{ color: C.muted }}>
           {open.length} open{late.length ? ` · ${late.length} overdue` : ""}
         </Text>
-        {tasks && !open.length && <Empty icon="☑" text={scope === "assigned" ? "Nothing assigned to you. Nice." : "You haven't reported any open tasks."} />}
+        {tasks && !open.length && <Empty icon="check-square" text={scope === "assigned" ? "Nothing assigned to you. Nice." : "You haven't reported any open tasks."} />}
         {open.map(row)}
         {done.length > 0 && (
           <Pressable onPress={() => setShowDone(!showDone)}>

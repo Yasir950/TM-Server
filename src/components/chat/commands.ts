@@ -78,7 +78,7 @@ export async function runCommand(input: string, ctx: CommandCtx): Promise<Comman
       const text = w.rest.replace(/^to\s+/i, "").trim();
       const { error } = await supabase.from("reminders").insert({ text, remind_at: w.at.toISOString() });
       if (error) throw error;
-      return { notice: `⏰ I'll remind you “${text}” ${when(w.at)}` };
+      return { notice: `I'll remind you “${text}” ${when(w.at)}` };
     }
     case "reminders":
       ctx.openReminders();
@@ -98,12 +98,12 @@ export async function runCommand(input: string, ctx: CommandCtx): Promise<Comman
     case "dnd": {
       if (arg.toLowerCase() === "off") {
         await supabase.from("profiles").update({ dnd_until: null }).eq("id", me.id);
-        return { notice: "🔔 Notifications resumed" };
+        return { notice: "Notifications resumed" };
       }
       const ms = parseDuration(arg || "1h") ?? fail("Usage: /dnd 30m · /dnd 2h · /dnd off");
       const until = new Date(Date.now() + ms);
       await supabase.from("profiles").update({ dnd_until: until.toISOString() }).eq("id", me.id);
-      return { notice: `🌙 Notifications paused until ${when(until)}` };
+      return { notice: `Notifications paused until ${when(until)}` };
     }
     case "topic": {
       const { error } = await supabase.from("channels").update({ topic: arg.slice(0, 250) }).eq("id", room().id);
@@ -134,7 +134,7 @@ export async function runCommand(input: string, ctx: CommandCtx): Promise<Comman
         body: JSON.stringify({ channelId: channel!.id }),
       });
       const out = await res.json().catch(() => ({ error: "Summary failed" }));
-      return out.summary ? { notice: `✨ ${out.summary}` } : fail(out.error ?? "Summary failed");
+      return out.summary ? { notice: out.summary } : fail(out.error ?? "Summary failed");
     }
     default:
       return fail(`Unknown command /${cmd}. Type / to see available commands.`);

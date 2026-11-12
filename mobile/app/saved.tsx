@@ -22,7 +22,7 @@ export default function Saved() {
       style={{ backgroundColor: C.bg }}
       data={shown ?? []}
       keyExtractor={(m) => m.id}
-      ListEmptyComponent={shown ? <Empty icon="🔖" text="Nothing saved yet. Long-press a message → Save for later." /> : null}
+      ListEmptyComponent={shown ? <Empty icon="bookmark" text="Nothing saved yet. Long-press a message → Save for later." /> : null}
       renderItem={({ item }) => <ResultCard m={item} />}
     />
   );

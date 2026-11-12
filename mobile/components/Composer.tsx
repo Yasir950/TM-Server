@@ -10,6 +10,7 @@ import { useChat } from "@/lib/store";
 import { mentionIds } from "@/lib/format";
 import { COMMANDS, runCommand } from "@/lib/commands";
 import { Avatar, C } from "./ui";
+import { Icon } from "./Icon";
 
 type Pending = { uri: string; name: string; type: string; size: number; duration?: number };
 type Props = { channelId: string; parentId: string | null; onSent: (m: Message) => void; onTyping: () => void };
@@ -166,7 +167,13 @@ export default function Composer({ channelId, parentId, onSent, onTyping }: Prop
         <View style={s.popup}>
           {suggestions.map((x) => (
             <Pressable key={x.username} onPress={() => pickMention(x.username)} style={s.option}>
-              {x.id ? <Avatar p={profiles[x.id]} size={24} /> : <Text style={{ width: 24, textAlign: "center" }}>📣</Text>}
+              {x.id ? (
+                <Avatar p={profiles[x.id]} size={24} />
+              ) : (
+                <View style={{ width: 24, alignItems: "center" }}>
+                  <Icon name="volume-2" size={16} />
+                </View>
+              )}
               <Text style={{ fontWeight: "700" }}>{x.label}</Text>
               <Text style={{ color: C.muted }}>@{x.username}</Text>
             </Pressable>
@@ -185,8 +192,9 @@ export default function Composer({ channelId, parentId, onSent, onTyping }: Prop
         <ScrollView horizontal style={{ maxHeight: 44 }} contentContainerStyle={{ gap: 6, paddingBottom: 6 }}>
           {files.map((f, i) => (
             <Pressable key={f.uri + i} onPress={() => setFiles((all) => all.filter((_, j) => j !== i))} style={s.file}>
+              <Icon name={f.type.startsWith("image/") ? "image" : f.type.startsWith("audio/") ? "mic" : f.type.startsWith("video/") ? "film" : "paperclip"} size={14} style={{ marginRight: 4 }} />
               <Text numberOfLines={1} style={{ maxWidth: 160 }}>
-                {f.type.startsWith("image/") ? "🖼" : f.type.startsWith("audio/") ? "🎙" : f.type.startsWith("video/") ? "🎬" : "📎"} {f.name}
+                {f.name}
               </Text>
               <Text style={{ color: C.muted }}> ✕</Text>
             </Pressable>
@@ -201,7 +209,7 @@ export default function Composer({ channelId, parentId, onSent, onTyping }: Prop
       )}
       <View style={s.row}>
         <Pressable onPress={attach} style={s.icon} hitSlop={8}>
-          <Text style={{ fontSize: 22, color: C.muted }}>＋</Text>
+          <Icon name="plus" size={22} />
         </Pressable>
         <TextInput
           ref={input}
@@ -222,7 +230,7 @@ export default function Composer({ channelId, parentId, onSent, onTyping }: Prop
           </Pressable>
         ) : (
           <Pressable onPress={toggleRecording} style={[s.icon, rec.isRecording && s.recording]} hitSlop={8}>
-            <Text style={{ fontSize: 20 }}>{rec.isRecording ? "⏹" : "🎙"}</Text>
+            <Icon name={rec.isRecording ? "square" : "mic"} size={20} color={rec.isRecording ? C.red : C.muted} />
           </Pressable>
         )}
       </View>

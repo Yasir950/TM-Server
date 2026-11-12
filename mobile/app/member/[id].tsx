@@ -5,6 +5,7 @@ import { supabase, activeStatus, displayName, inDnd, isAdmin, type Role } from "
 import { useChat } from "@/lib/store";
 import Choice from "@/components/Choice";
 import { Avatar, Button, C, GhostButton, Label, field } from "@/components/ui";
+import { Icon } from "@/components/Icon";
 
 // Admin section of a member's profile (port of MemberCard's admin box in src/components/chat/Company.tsx)
 function AdminTools({ userId }: { userId: string }) {
@@ -94,17 +95,24 @@ export default function MemberScreen() {
         <Avatar p={p} size={96} />
         <Text style={{ fontSize: 22, fontWeight: "800" }}>{displayName(p)}</Text>
         {!!m?.designation && <Text style={{ color: C.muted }}>{m.designation}</Text>}
-        <Text style={{ color: C.muted }}>
-          {online.has(id) ? (away.has(id) ? "🟡 Away" : "🟢 Active") : "⚪ Offline"}
-          {inDnd(p) ? " · 🌙 Notifications paused" : ""}
-        </Text>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+          <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: online.has(id) ? (away.has(id) ? "#e8a72d" : C.green) : "#bbb" }} />
+          <Text style={{ color: C.muted }}>{online.has(id) ? (away.has(id) ? "Away" : "Active") : "Offline"}</Text>
+          {inDnd(p) && (
+            <>
+              <Icon name="moon" size={13} />
+              <Text style={{ color: C.muted }}>Notifications paused</Text>
+            </>
+          )}
+        </View>
         {status && <Text>{`${status.emoji} ${status.text}`.trim()}</Text>}
       </View>
       <Button title={id === uid ? "Message yourself" : "Message"} onPress={message} />
       {id === uid && <GhostButton title="Edit profile" onPress={() => router.push("/profile")} />}
       {id !== uid && (
         <GhostButton
-          title="🎧 Call"
+          icon="headphones"
+          title="Call"
           onPress={async () => {
             const { data, error } = await supabase.rpc("get_or_create_dm", { p_user_ids: [id] });
             if (error) return alert(error.message);

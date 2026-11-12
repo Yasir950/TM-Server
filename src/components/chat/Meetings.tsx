@@ -153,7 +153,7 @@ export function ScheduleMeeting({ channelId, onClose }: { channelId?: string; on
             <option value="dm">New {call} with the people invited</option>
             {places.map((c) => (
               <option key={c.id} value={c.id}>
-                {c.kind === "dm" ? channelTitle(c) : `${c.kind === "private" ? "🔒" : "#"} ${c.name}`}
+                {c.kind === "dm" ? channelTitle(c) : c.kind === "private" ? `${c.name} (private)` : `#${c.name}`}
               </option>
             ))}
           </select>

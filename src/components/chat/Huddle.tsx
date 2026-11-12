@@ -172,7 +172,7 @@ const handSound = () => tone([[880, 0, 0.12], [1175, 0.1, 0.18]], 0.06);
 
 // Leaves a "Call happened" card in the conversation; the body is the notification and search fallback
 function logCall(channelId: string, userId: string, seconds: number, people: string[]) {
-  const body = people.length > 1 ? `📞 Call ended · ${callLength(seconds)}` : "📞 Missed call";
+  const body = people.length > 1 ? `Call ended · ${callLength(seconds)}` : "Missed call";
   supabase
     .from("messages")
     .insert({ channel_id: channelId, user_id: userId, body, blocks: [{ type: "call", duration: Math.round(seconds), people }], attachments: [], mentions: [] })
@@ -834,7 +834,8 @@ export default function Huddle({
     try {
       // Asked from the window that was clicked, since the browser requires a click there
       const s = await (popout ?? window).navigator.mediaDevices.getDisplayMedia(
-        { video: { frameRate: { ideal: 15, max: 30 } }, audio: false },
+        // displaySurface opens Chrome's picker on the "Entire Screen" tab; the cast covers the Chrome-only options
+        { video: { frameRate: { ideal: 15, max: 30 }, displaySurface: "monitor" }, audio: false, selfBrowserSurface: "exclude", monitorTypeSurfaces: "include" } as DisplayMediaStreamOptions,
       );
       const t = s.getVideoTracks()[0];
       t.contentHint = "detail";
@@ -1225,7 +1226,7 @@ export function IncomingHuddle() {
   const silent = inDnd(me);
   const live = !!ring && (!!ring.meeting || !!huddles[ring.channelId]?.length);
 
-  const flashText = ring ? (ring.meeting ? `📅 ${ring.title} is starting…` : `📞 ${displayName(profiles[ring.from])} is calling…`) : "";
+  const flashText = ring ? (ring.meeting ? `${ring.title} is starting…` : `${displayName(profiles[ring.from])} is calling…`) : "";
   useEffect(() => {
     if (!ring) return;
     if (!silent) ringtone();

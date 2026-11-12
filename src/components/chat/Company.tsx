@@ -189,7 +189,7 @@ export function Onboarding({ onClose }: { onClose?: () => void }) {
   return (
     <div className="flex min-h-full flex-col items-center justify-center overflow-y-auto bg-tm-surface px-4 py-12">
       <Logo height={48} />
-      <h1 className="mt-8 text-center text-3xl font-bold">Welcome{me ? `, ${displayName(me).split(" ")[0]}` : ""} 👋</h1>
+      <h1 className="mt-8 text-center text-3xl font-bold">Welcome{me ? `, ${displayName(me).split(" ")[0]}` : ""}</h1>
       <p className="mt-2 max-w-sm text-center text-sm text-zinc-500">Create a company for your team, or join one you&apos;ve been invited to.</p>
       <div className="tm-raised mt-8 w-full max-w-md rounded-2xl bg-white p-6">{body}</div>
       <p className="mt-6 text-sm text-zinc-500">
@@ -506,7 +506,7 @@ export function MemberCard() {
           <p className="text-sm text-zinc-500">@{p.username}</p>
           {status && (
             <p className="flex items-center justify-center gap-1.5 pt-1 text-sm text-zinc-700">
-              <span>{status.emoji || "💬"}</span>
+              {status.emoji ? <span>{status.emoji}</span> : <Icon name="messages" size={15} className="text-zinc-400" />}
               <span className="truncate">{status.text}</span>
             </p>
           )}
@@ -514,7 +514,11 @@ export function MemberCard() {
             <p className="flex items-center justify-center gap-2 pt-1 text-sm text-zinc-600">
               <span className={`h-2.5 w-2.5 rounded-full ${dot}`} />
               {label}
-              {inDnd(p) && <span className="text-zinc-400">· 🌙 Notifications paused</span>}
+              {inDnd(p) && (
+                <span className="inline-flex items-center gap-1 text-zinc-400">
+                  · <Icon name="moon" size={13} /> Notifications paused
+                </span>
+              )}
             </p>
           ) : (
             <p className="pt-1 text-sm font-medium text-red-600">Deactivated</p>

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Modal, Pressable, ScrollView, Text, View } from "react-native";
 import { C, field } from "./ui";
+import { Icon } from "./Icon";
 
 export type Option<T extends string> = { value: T; label: string; icon?: React.ReactNode };
 
@@ -13,7 +14,7 @@ export default function Choice<T extends string>({ value, options, onChange, pla
       <Pressable onPress={() => setOpen(true)} style={compact ? { flexDirection: "row", alignItems: "center", gap: 4 } : [field, { flexDirection: "row", alignItems: "center", gap: 8 }]}>
         {current?.icon}
         <Text style={{ flex: compact ? undefined : 1, color: current ? C.text : C.muted }}>{current?.label ?? placeholder}</Text>
-        <Text style={{ color: C.muted }}>▾</Text>
+        <Icon name="chevron-down" size={14} />
       </Pressable>
       <Modal visible={open} transparent animationType="slide" onRequestClose={() => setOpen(false)}>
         <Pressable style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.3)" }} onPress={() => setOpen(false)} />
@@ -30,7 +31,7 @@ export default function Choice<T extends string>({ value, options, onChange, pla
               >
                 {o.icon}
                 <Text style={{ flex: 1, fontSize: 16, fontWeight: o.value === value ? "800" : "400" }}>{o.label}</Text>
-                {o.value === value && <Text style={{ color: C.blue }}>✓</Text>}
+                {o.value === value && <Icon name="check" size={16} color={C.blue} />}
               </Pressable>
             ))}
           </ScrollView>

@@ -8,6 +8,7 @@ import { PRIORITIES, STATUSES, TYPES, canManage, dateValue, dueLabel, priorityOf
 import Choice from "@/components/Choice";
 import WhenPicker from "@/components/WhenPicker";
 import { Avatar, C, Empty, GhostButton, Label, Segmented, field } from "@/components/ui";
+import { Icon } from "@/components/Icon";
 
 type TaskWithProject = Task & { projects: Project | null };
 
@@ -74,7 +75,7 @@ export default function TaskScreen() {
 
   if (task === undefined) return null;
   const project = task?.projects;
-  if (!task || !project) return <Empty icon="🗂" text="This task was deleted, or you're not in its project." />;
+  if (!task || !project) return <Empty icon="layers" text="This task was deleted, or you're not in its project." />;
 
   const key = `${project.key}-${task.number}`;
   const manage = canManage(me, project);
@@ -133,13 +134,13 @@ export default function TaskScreen() {
         </View>
         <View style={{ flex: 1 }}>
           <Label>Priority</Label>
-          <Choice value={task.priority} options={PRIORITIES.map((p) => ({ value: p.id, label: `${p.icon} ${p.label}` }))} onChange={(p) => save({ priority: p })} />
+          <Choice value={task.priority} options={PRIORITIES.map((p) => ({ value: p.id, label: p.label, icon: <Icon name={p.icon} size={16} color={p.color} /> }))} onChange={(p) => save({ priority: p })} />
         </View>
       </View>
       <View style={{ flexDirection: "row", gap: 8 }}>
         <View style={{ flex: 1 }}>
           <Label>Type</Label>
-          <Choice value={task.type} options={TYPES.map((t) => ({ value: t.id, label: `${t.icon} ${t.label}` }))} onChange={(t) => save({ type: t })} />
+          <Choice value={task.type} options={TYPES.map((t) => ({ value: t.id, label: t.label, icon: <Icon name={t.icon} size={16} color={t.color} /> }))} onChange={(t) => save({ type: t })} />
         </View>
         <View style={{ flex: 1 }}>
           <Label>Estimate (points)</Label>

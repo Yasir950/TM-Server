@@ -7,6 +7,7 @@ import { PRIORITIES, TYPES, dateValue, writableProjects } from "@/lib/tasks";
 import Choice from "@/components/Choice";
 import WhenPicker from "@/components/WhenPicker";
 import { Button, C, GhostButton, Label, field } from "@/components/ui";
+import { Icon } from "@/components/Icon";
 
 // Port of CreateTask; ?p= project, ?s= status column
 export default function NewTask() {
@@ -62,11 +63,11 @@ export default function NewTask() {
       <View style={{ flexDirection: "row", gap: 8 }}>
         <View style={{ flex: 1 }}>
           <Label>Type</Label>
-          <Choice value={type} options={TYPES.map((t) => ({ value: t.id, label: `${t.icon} ${t.label}` }))} onChange={setType} />
+          <Choice value={type} options={TYPES.map((t) => ({ value: t.id, label: t.label, icon: <Icon name={t.icon} size={16} color={t.color} /> }))} onChange={setType} />
         </View>
         <View style={{ flex: 1 }}>
           <Label>Priority</Label>
-          <Choice value={priority} options={PRIORITIES.map((p) => ({ value: p.id, label: `${p.icon} ${p.label}` }))} onChange={setPriority} />
+          <Choice value={priority} options={PRIORITIES.map((p) => ({ value: p.id, label: p.label, icon: <Icon name={p.icon} size={16} color={p.color} /> }))} onChange={setPriority} />
         </View>
       </View>
       <View>

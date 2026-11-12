@@ -3,6 +3,7 @@ import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { useChat } from "@/lib/store";
 import { displayName } from "@/lib/supabase";
 import { Avatar, C, field } from "./ui";
+import { Icon } from "./Icon";
 
 // Search and tick people in the workspace (new DM, add to channel, meeting invitees, project members)
 export default function PeoplePicker({ exclude = [], picked, setPicked, max }: { exclude?: string[]; picked: string[]; setPicked: (ids: string[]) => void; max?: number }) {
@@ -23,7 +24,7 @@ export default function PeoplePicker({ exclude = [], picked, setPicked, max }: {
             <Text style={{ flex: 1, fontSize: 16 }}>
               {displayName(p)} <Text style={{ color: C.muted }}>@{p.username}</Text>
             </Text>
-            <Text style={{ fontSize: 20, color: picked.includes(p.id) ? C.blue : "#ccc" }}>{picked.includes(p.id) ? "☑" : "☐"}</Text>
+            <Icon name={picked.includes(p.id) ? "check-square" : "square"} size={20} color={picked.includes(p.id) ? C.blue : "#ccc"} />
           </Pressable>
         ))}
       </ScrollView>

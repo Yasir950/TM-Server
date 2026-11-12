@@ -5,6 +5,7 @@ import { supabase, type AppNotification, type Message } from "@/lib/supabase";
 import { useChat } from "@/lib/store";
 import ResultCard, { ago } from "@/components/ResultCard";
 import { Avatar, C, Empty } from "@/components/ui";
+import { Icon } from "@/components/Icon";
 
 // Mentions and task notifications in one timeline, newest first (port of ActivityList in src/components/chat/Chat.tsx)
 export default function Activity() {
@@ -45,7 +46,7 @@ export default function Activity() {
             </Text>
           ) : null
         }
-        ListEmptyComponent={feed ? <Empty icon="🔔" text="Nothing yet. Mentions and tasks assigned to you show up here." /> : null}
+        ListEmptyComponent={feed ? <Empty icon="bell" text="Nothing yet. Mentions and tasks assigned to you show up here." /> : null}
         renderItem={({ item: { m, n } }) =>
           m ? (
             <ResultCard m={m} label={m.parent_id ? "Thread in " : "Mention in "} />
@@ -59,7 +60,10 @@ export default function Activity() {
             >
               <Avatar p={n!.actor_id ? profiles[n!.actor_id] : undefined} size={36} />
               <View style={{ flex: 1 }}>
-                <Text style={{ color: C.muted, fontSize: 12 }}>☑ Task assigned to you · {ago(n!.created_at)}</Text>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                  <Icon name="check-square" size={12} />
+                  <Text style={{ color: C.muted, fontSize: 12 }}>Task assigned to you · {ago(n!.created_at)}</Text>
+                </View>
                 <Text style={{ fontWeight: n!.read_at ? "600" : "800" }}>{n!.title}</Text>
                 <Text numberOfLines={2}>{n!.body}</Text>
               </View>

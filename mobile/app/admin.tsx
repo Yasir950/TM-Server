@@ -5,6 +5,7 @@ import { useChat } from "@/lib/store";
 import { dayLabel, timeOf } from "@/lib/format";
 import Choice from "@/components/Choice";
 import { Avatar, Button, C, GhostButton, Label, field } from "@/components/ui";
+import { Icon } from "@/components/Icon";
 
 // Port of the Admin view: Admin.tsx, Plan.tsx and AdminPlatform.tsx in src/components/chat
 type Stats = { members: number; channels: number; messages_7d: number; active_7d: number; daily: { day: string; count: number }[]; top_channels: { name: string; count: number }[] };
@@ -400,7 +401,7 @@ function Events({ notify }: { notify: (s: string) => void }) {
       <TextInput style={field} autoCapitalize="none" keyboardType="url" placeholder="https://example.com/events" value={url} onChangeText={setUrl} />
       {EVENTS.map((e) => (
         <Pressable key={e} onPress={() => setEvents(events.includes(e) ? events.filter((x) => x !== e) : [...events, e])} style={{ flexDirection: "row", gap: 8 }}>
-          <Text style={{ color: events.includes(e) ? C.blue : "#ccc" }}>{events.includes(e) ? "☑" : "☐"}</Text>
+          <Icon name={events.includes(e) ? "check-square" : "square"} size={16} color={events.includes(e) ? C.blue : "#ccc"} />
           <Text>{e}</Text>
         </Pressable>
       ))}

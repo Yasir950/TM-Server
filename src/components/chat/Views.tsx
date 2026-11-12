@@ -6,7 +6,7 @@ import { dayLabel, timeOf } from "@/lib/format";
 import { Avatar, CardSkeleton, EmojiPopover, Modal, btn, btnGhost, input } from "../ui";
 import { useChat } from "./store";
 import { useSavedIds } from "./useMessages";
-import { Icon, type IconName } from "../icons";
+import { ChannelIcon, Icon, type IconName } from "../icons";
 
 // Phones show one pane at a time; this returns from a conversation or view to the sidebar list
 export function MobileBack({ onClick }: { onClick?: () => void }) {
@@ -57,7 +57,7 @@ function ResultCard({ m, extra }: { m: Message; extra?: React.ReactNode }) {
             {ch ? (ch.kind === "dm" ? channelTitle(ch) : `#${ch.name}`) : "channel"} · {dayLabel(m.created_at)} {timeOf(m.created_at)}
           </span>
         </div>
-        <div className="mt-0.5 line-clamp-3 text-[15px] text-zinc-700">{m.deleted_at ? <i className="text-zinc-400">Deleted</i> : m.body || "📎 Attachment"}</div>
+        <div className="mt-0.5 line-clamp-3 text-[15px] text-zinc-700">{m.deleted_at ? <i className="text-zinc-400">Deleted</i> : m.body || "Attachment"}</div>
         {extra}
       </div>
     </button>
@@ -207,7 +207,7 @@ export function RemindersView() {
   const done = items?.filter((r) => r.done_at).reverse() ?? [];
   const row = (r: Reminder) => (
     <div key={r.id} className="tm-fade-up flex items-center gap-3 rounded-2xl border border-tm-line bg-white p-4">
-      <span className="text-xl">{r.done_at ? "✅" : "⏰"}</span>
+      <Icon name={r.done_at ? "checkCircle" : "clock"} size={20} className={r.done_at ? "text-tm-green" : "text-zinc-400"} />
       <div className="min-w-0 flex-1">
         <div className={`truncate text-[15px] ${r.done_at ? "text-zinc-400 line-through" : ""}`}>{r.text}</div>
         <div className="text-xs text-zinc-400">
@@ -244,7 +244,7 @@ export function QuickSwitcher({ onClose }: { onClose: () => void }) {
       .map((c) => ({
         key: c.id,
         label: channelTitle(c),
-        icon: c.kind === "dm" ? "💬" : c.kind === "private" ? "🔒" : "#",
+        icon: <ChannelIcon kind={c.kind} size={15} />,
         hint: unread[c.id]?.unread ? `${unread[c.id].unread} unread` : undefined,
         go: () => setActive(c.id),
       }));
@@ -358,7 +358,7 @@ export function StatusModal({ onClose }: { onClose: () => void }) {
       <form onSubmit={save} className="space-y-4">
         <div className="relative flex gap-2">
           <button type="button" onClick={() => setPicker(!picker)} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-tm-line bg-tm-surface text-xl transition hover:bg-white">
-            {emoji || "😊"}
+            {emoji || <Icon name="smile" size={20} className="text-zinc-400" />}
           </button>
           {picker && <EmojiPopover className="top-12 left-0" onClose={() => setPicker(false)} onPick={(e) => { setEmoji(e); setPicker(false); }} />}
           <input className={input} placeholder="What's your status?" value={text} maxLength={100} onChange={(e) => setText(e.target.value)} autoFocus />

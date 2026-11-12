@@ -15,7 +15,7 @@ import { CompanyLogo, CompanySwitcher, CompanyView, InviteFromUrl, MemberCard, M
 import Huddle, { HuddleElsewhere, IncomingHuddle } from "./Huddle";
 import { MeetingsView, useNow } from "./Meetings";
 import { MyTasksView, ProjectsView, SidebarProjects, TaskDialog } from "./Projects";
-import { Icon, type IconName } from "../icons";
+import { ChannelIcon, Icon, type IconName } from "../icons";
 import { APP_NAME, CALL, DESKTOP_MAC_URL, DESKTOP_WIN_URL, RAIL } from "@/lib/brand";
 import { enablePush, signOut } from "@/lib/push";
 
@@ -130,7 +130,7 @@ function Empty() {
     <div className="tm-fade flex flex-1 flex-col items-center justify-center gap-4 text-zinc-500">
       <Logo height={56} />
       <h2 className="text-xl font-semibold text-zinc-900">
-        {greeting}, {displayName(me).split(" ")[0]} 👋
+        {greeting}, {displayName(me).split(" ")[0]}
       </h2>
       <p className="text-sm">Welcome back. Pick a channel or start a direct message.</p>
       <p className="text-xs text-zinc-400">
@@ -188,8 +188,12 @@ function TopBar({ onSwitcher, className }: { onSwitcher: () => void; className: 
       </form>
       <div className="relative" ref={menuRef}>
         <button onClick={() => setMenu(!menu)} className="flex items-center gap-2 rounded-xl px-2 py-1 transition hover:bg-white/10">
-          {status && <span title={status.text}>{status.emoji || "💬"}</span>}
-          {dnd && <span title="Notifications paused">🌙</span>}
+          {status && <span title={status.text}>{status.emoji || <Icon name="messages" size={16} className="text-white/80" />}</span>}
+          {dnd && (
+            <span title="Notifications paused">
+              <Icon name="moon" size={16} className="text-white/80" />
+            </span>
+          )}
           <Avatar profile={me} size={30} online />
         </button>
         {menu && (
@@ -201,16 +205,16 @@ function TopBar({ onSwitcher, className }: { onSwitcher: () => void; className: 
                 <div className="truncate text-xs text-zinc-500">{status ? `${status.emoji} ${status.text}` : `@${me.username}`}</div>
               </div>
             </div>
-            <MenuItem onClick={() => { setProfileModal(true); setMenu(false); }}>👤 Edit profile</MenuItem>
-            <MenuItem onClick={() => { setStatusModal(true); setMenu(false); }}>😊 {status ? "Edit status" : "Set a status"}</MenuItem>
+            <MenuItem icon="user" onClick={() => { setProfileModal(true); setMenu(false); }}>Edit profile</MenuItem>
+            <MenuItem icon="smile" onClick={() => { setStatusModal(true); setMenu(false); }}>{status ? "Edit status" : "Set a status"}</MenuItem>
             <div className="my-1 h-px bg-tm-line" />
             {dnd ? (
-              <MenuItem onClick={() => setDnd(null)}>🔔 Resume notifications</MenuItem>
+              <MenuItem icon="bell" onClick={() => setDnd(null)}>Resume notifications</MenuItem>
             ) : (
               <>
                 <div className="px-3 pt-1 pb-0.5 text-xs text-zinc-400">Pause notifications</div>
                 {[[0.5, "30 minutes"], [1, "1 hour"], [8, "8 hours"], [24, "24 hours"]].map(([h, label]) => (
-                  <MenuItem key={h} onClick={() => setDnd(h as number)}>🌙 {label}</MenuItem>
+                  <MenuItem key={h} icon="moon" onClick={() => setDnd(h as number)}>{label}</MenuItem>
                 ))}
               </>
             )}
@@ -273,8 +277,9 @@ function AppMenu() {
 const pauseNotifications = (uid: string, hours: number | null) =>
   supabase.from("profiles").update({ dnd_until: hours ? new Date(Date.now() + hours * 3600_000).toISOString() : null }).eq("id", uid);
 
-const MenuItem = ({ onClick, children }: { onClick: () => void; children: React.ReactNode }) => (
-  <button onClick={onClick} className="block w-full rounded-lg px-3 py-1.5 text-left transition hover:bg-tm-blue-light hover:text-tm-blue-dark">
+const MenuItem = ({ onClick, icon, children }: { onClick: () => void; icon?: IconName; children: React.ReactNode }) => (
+  <button onClick={onClick} className="flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-left transition hover:bg-tm-blue-light hover:text-tm-blue-dark">
+    {icon && <Icon name={icon} size={15} className="opacity-70" />}
     {children}
   </button>
 );
@@ -399,7 +404,7 @@ function DmList({ onNew }: { onNew: () => void }) {
                   {pv && <span className="shrink-0 text-[11px] text-zinc-400">{dayLabel(pv.created_at) === "Today" ? timeOf(pv.created_at) : dayLabel(pv.created_at)}</span>}
                 </span>
                 <span className={`block truncate text-[13px] ${bold ? "text-zinc-800" : "text-zinc-500"}`}>
-                  {pv ? `${pv.user_id === me.id ? "You: " : ""}${pv.body || "📎 Attachment"}` : "No messages yet"}
+                  {pv ? `${pv.user_id === me.id ? "You: " : ""}${pv.body || "Attachment"}` : "No messages yet"}
                 </span>
               </span>
               {bold && <Badge count={unread[c.id].unread} strong />}
@@ -501,7 +506,7 @@ function ActivityList() {
                   <span className="shrink-0">{dayLabel(m.created_at) === "Today" ? timeOf(m.created_at) : dayLabel(m.created_at)}</span>
                 </span>
                 <span className="block truncate text-sm font-semibold text-zinc-800">{m.bot_name ?? displayName(profiles[m.user_id])}</span>
-                <span className="line-clamp-2 text-[13px] text-zinc-600">{m.body || "📎 Attachment"}</span>
+                <span className="line-clamp-2 text-[13px] text-zinc-600">{m.body || "Attachment"}</span>
               </span>
             </button>
           );
@@ -528,7 +533,7 @@ function Sidebar({ tab, className }: { tab: Tab; className: string }) {
     .sort((a, b) => (previews[b.id]?.created_at ?? b.created_at).localeCompare(previews[a.id]?.created_at ?? a.created_at));
 
   const renderItem = (c: Channel) => {
-    if (c.kind !== "dm") return <Item key={c.id} id={c.id} label={c.name ?? ""} icon={c.kind === "private" ? "🔒" : "#"} />;
+    if (c.kind !== "dm") return <Item key={c.id} id={c.id} label={c.name ?? ""} icon={<ChannelIcon kind={c.kind} size={15} />} />;
     const others = (dmMembers[c.id] ?? []).filter((id) => id !== me.id);
     const p = profiles[others[0] ?? me.id];
     return (

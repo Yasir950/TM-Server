@@ -5,6 +5,7 @@ import { supabase, activeStatus } from "@/lib/supabase";
 import { useChat } from "@/lib/store";
 import EmojiPicker from "@/components/EmojiPicker";
 import { Button, C, GhostButton, Label, Segmented, field } from "@/components/ui";
+import { Icon } from "@/components/Icon";
 
 // Same presets and clear-after choices as StatusModal (src/components/chat/Views.tsx)
 const PRESETS: [string, string, number | null][] = [
@@ -49,7 +50,7 @@ export default function Status() {
     <ScrollView style={{ backgroundColor: C.bg }} contentContainerStyle={{ padding: 16, gap: 16 }} keyboardShouldPersistTaps="handled">
       <View style={{ flexDirection: "row", gap: 8 }}>
         <Pressable onPress={() => setPicker(true)} style={[field, { width: 50, alignItems: "center" }]}>
-          <Text style={{ fontSize: 20 }}>{emoji || "😊"}</Text>
+          {emoji ? <Text style={{ fontSize: 20 }}>{emoji}</Text> : <Icon name="smile" size={20} />}
         </Pressable>
         <TextInput style={[field, { flex: 1 }]} placeholder="What's your status?" maxLength={100} value={text} onChangeText={setText} autoFocus />
       </View>

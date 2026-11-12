@@ -10,6 +10,7 @@ import { dayLabel, timeOf } from "@/lib/format";
 import MessageRow from "./MessageRow";
 import Composer from "./Composer";
 import { C } from "./ui";
+import { Icon } from "./Icon";
 
 // A channel's messages (parentId null) or one thread, with a composer. focusId scrolls to that message.
 export default function Conversation({ channelId, parentId, focusId }: { channelId: string; parentId: string | null; focusId?: string }) {
@@ -81,7 +82,7 @@ export default function Conversation({ channelId, parentId, focusId }: { channel
         onEndReached={loadOlder}
         onEndReachedThreshold={0.3}
         onScrollToIndexFailed={({ index }) => setTimeout(() => list.current?.scrollToIndex({ index, animated: false }), 500)}
-        ListEmptyComponent={<Text style={s.empty}>No messages yet. Say hello 👋</Text>}
+        ListEmptyComponent={<Text style={s.empty}>No messages yet. Say hello</Text>}
         renderItem={({ item, index }) => {
           const older = messages[index + 1];
           const newDay = !older || dayLabel(older.created_at) !== dayLabel(item.created_at);
@@ -122,8 +123,9 @@ function MeetingBanner({ channelId }: { channelId: string }) {
   const live = meetingLive(m, now);
   return (
     <View style={s.banner}>
+      <Icon name="calendar" size={15} color={C.text} />
       <Text style={{ flex: 1 }} numberOfLines={1}>
-        📅 <Text style={{ fontWeight: "700" }}>{m.title}</Text>
+        <Text style={{ fontWeight: "700" }}>{m.title}</Text>
         {live ? ` is happening now · until ${timeOf(new Date(meetingEnd(m)).toISOString())}` : ` starts at ${timeOf(m.starts_at)}`}
       </Text>
       {live && (

@@ -4,6 +4,7 @@ import { useChat } from "@/lib/store";
 import { supabase, activeStatus, displayName, inDnd, isAdmin } from "@/lib/supabase";
 import { signOut } from "@/lib/push";
 import { Avatar, Button, C } from "@/components/ui";
+import { Icon, type IconName } from "@/components/Icon";
 
 const PAUSE: [number, string][] = [
   [0.5, "30 minutes"],
@@ -24,29 +25,32 @@ export default function You() {
         <Avatar p={me} size={56} />
         <View>
           <Text style={{ fontSize: 20, fontWeight: "800" }}>{displayName(me)}</Text>
-          <Text style={{ color: C.muted }}>{paused ? "🌙 Notifications paused" : "🟢 Active"}</Text>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+            {paused ? <Icon name="moon" size={13} /> : <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: C.green }} />}
+            <Text style={{ color: C.muted }}>{paused ? "Notifications paused" : "Active"}</Text>
+          </View>
         </View>
       </Pressable>
-      <Row icon={status?.emoji || "😊"} text={status ? status.text || "Status set" : "Update your status"} onPress={() => router.push("/status")} />
+      <Row icon="smile" emoji={status?.emoji} text={status ? status.text || "Status set" : "Update your status"} onPress={() => router.push("/status")} />
       <Section title="Notifications" />
       {paused ? (
-        <Row icon="🔔" text={`Resume notifications (paused until ${new Date(me.dnd_until!).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })})`} onPress={() => setDnd(null)} />
+        <Row icon="bell" text={`Resume notifications (paused until ${new Date(me.dnd_until!).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })})`} onPress={() => setDnd(null)} />
       ) : (
-        PAUSE.map(([h, label]) => <Row key={h} icon="🌙" text={`Pause for ${label}`} onPress={() => setDnd(h)} />)
+        PAUSE.map(([h, label]) => <Row key={h} icon="moon" text={`Pause for ${label}`} onPress={() => setDnd(h)} />)
       )}
-      <Row icon="⚙️" text="Notification settings" onPress={() => Linking.openSettings()} />
+      <Row icon="settings" text="Notification settings" onPress={() => Linking.openSettings()} />
       <Section title="Account" />
-      <Row icon="👤" text="Edit profile" onPress={() => router.push("/profile")} />
-      <Row icon="⏰" text="Reminders" onPress={() => router.push("/reminders")} />
-      {company && <Row icon="🏢" text={`${company.name} · people & invites`} onPress={() => router.push("/company")} />}
-      {company && isAdmin(me) && <Row icon="🛠" text="Admin" onPress={() => router.push("/admin")} />}
-      {superAdmin && <Row icon="🛡" text="Super admin" onPress={() => router.push("/super-admin")} />}
-      {!company && <Row icon="➕" text="Create or join a workspace" onPress={() => router.push("/workspace")} />}
+      <Row icon="user" text="Edit profile" onPress={() => router.push("/profile")} />
+      <Row icon="clock" text="Reminders" onPress={() => router.push("/reminders")} />
+      {company && <Row icon="briefcase" text={`${company.name} · people & invites`} onPress={() => router.push("/company")} />}
+      {company && isAdmin(me) && <Row icon="tool" text="Admin" onPress={() => router.push("/admin")} />}
+      {superAdmin && <Row icon="shield" text="Super admin" onPress={() => router.push("/super-admin")} />}
+      {!company && <Row icon="plus" text="Create or join a workspace" onPress={() => router.push("/workspace")} />}
       {companies.length > 1 && (
         <>
           <Section title="Switch workspace" />
           {companies.map((co) => (
-            <Row key={co.id} icon={co.id === company?.id ? "✓" : "  "} text={co.name} onPress={() => co.id !== company?.id && switchCompany(co.id)} />
+            <Row key={co.id} icon={co.id === company?.id ? "check" : undefined} text={co.name} onPress={() => co.id !== company?.id && switchCompany(co.id)} />
           ))}
         </>
       )}
@@ -58,9 +62,10 @@ export default function You() {
 }
 
 const Section = ({ title }: { title: string }) => <Text style={s.section}>{title}</Text>;
-const Row = ({ icon, text, onPress }: { icon: string; text: string; onPress: () => void }) => (
+// `emoji` is user content (their status emoji) and wins over the icon when set
+const Row = ({ icon, emoji, text, onPress }: { icon?: IconName; emoji?: string; text: string; onPress: () => void }) => (
   <Pressable onPress={onPress} style={({ pressed }) => [s.row, pressed && { backgroundColor: "#f4f4f4" }]}>
-    <Text style={{ width: 28, fontSize: 18, textAlign: "center" }}>{icon}</Text>
+    <View style={{ width: 28, alignItems: "center" }}>{emoji ? <Text style={{ fontSize: 18 }}>{emoji}</Text> : icon && <Icon name={icon} size={20} color={C.text} />}</View>
     <Text style={{ flex: 1, fontSize: 16 }}>{text}</Text>
   </Pressable>
 );

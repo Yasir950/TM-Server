@@ -11,7 +11,7 @@ import Canvas from "./Canvas";
 import { MobileBack } from "./Views";
 import { MeetingBanner, ScheduleMeeting } from "./Meetings";
 import { Avatar, MessageSkeleton, StatusBadge } from "../ui";
-import { Icon } from "../icons";
+import { ChannelIcon, Icon } from "../icons";
 import { CALL, call } from "@/lib/brand";
 
 export default function ChannelView({ channelId }: { channelId: string }) {
@@ -94,7 +94,7 @@ export default function ChannelView({ channelId }: { channelId: string }) {
       <header className="flex h-14 shrink-0 items-center gap-1.5 border-b border-tm-line px-2 md:gap-2 md:px-5">
         <MobileBack />
         <button onClick={() => showChannelDetails(channelId)} className="flex min-w-0 items-center gap-1.5 rounded-lg px-1 py-1 text-lg font-semibold transition hover:bg-tm-surface md:px-2">
-          <span className="text-zinc-400">{isDM ? "" : channel.kind === "private" ? "🔒" : "#"}</span>
+          {!isDM && <ChannelIcon kind={channel.kind} size={17} className="text-zinc-400" />}
           <span className="truncate">{title}</span>
           <Icon name="chevronDown" size={16} className="text-zinc-500" />
         </button>
@@ -103,7 +103,7 @@ export default function ChannelView({ channelId }: { channelId: string }) {
           className={`hidden rounded-lg p-1 transition hover:bg-tm-surface sm:block ${memberships[channelId]?.starred ? "text-amber-400" : "text-zinc-300 hover:text-zinc-500"}`}
           title={memberships[channelId]?.starred ? "Unstar" : "Star"}
         >
-          ★
+          <Icon name="star" size={16} filled={memberships[channelId]?.starred} />
         </button>
         {isDM && dmPartner && (
           <span className="hidden sm:contents">
@@ -159,7 +159,10 @@ export default function ChannelView({ channelId }: { channelId: string }) {
         onReact={(m, e) => toggleReaction(m, e, me.id, reactions, setReactions)}
         intro={
           <div className="px-5 pt-10 pb-4">
-            <h2 className="text-2xl font-bold">{isDM ? title : `${channel.kind === "private" ? "🔒" : "#"} ${title}`}</h2>
+            <h2 className="flex items-center gap-2 text-2xl font-bold">
+              {!isDM && <ChannelIcon kind={channel.kind} size={22} className="text-zinc-400" />}
+              {title}
+            </h2>
             <p className="mt-1 text-sm text-zinc-500">
               {isDM ? "This is the very beginning of your direct message history." : `This is the very beginning of the #${title} channel.`}
             </p>
@@ -180,11 +183,15 @@ export default function ChannelView({ channelId }: { channelId: string }) {
         )}
       </div>
       {channel.archived ? (
-        <div className="m-5 mt-0 rounded-2xl bg-tm-surface p-4 text-center text-sm text-zinc-500">🗄️ This channel is archived. You can read its history, but no one can post.</div>
+        <div className="m-5 mt-0 flex items-center justify-center gap-2 rounded-2xl bg-tm-surface p-4 text-center text-sm text-zinc-500">
+          <Icon name="archive" size={16} />
+          This channel is archived. You can read its history, but no one can post.
+        </div>
       ) : !memberships[channelId] ? (
         // Only super admins can open a conversation they are not in
-        <div className="m-5 mt-0 rounded-2xl bg-tm-surface p-4 text-center text-sm text-zinc-500">
-          🛡️ You&apos;re viewing this {isDM ? "conversation" : "channel"} as a super admin. You aren&apos;t a member, so you can read but not post.
+        <div className="m-5 mt-0 flex items-center justify-center gap-2 rounded-2xl bg-tm-surface p-4 text-center text-sm text-zinc-500">
+          <Icon name="shield" size={16} className="shrink-0" />
+          You&apos;re viewing this {isDM ? "conversation" : "channel"} as a super admin. You aren&apos;t a member, so you can read but not post.
         </div>
       ) : (
         <Composer channelId={channelId} placeholder={`Message ${isDM ? title : "#" + title}`} onSent={upsert} onTyping={sendTyping} />

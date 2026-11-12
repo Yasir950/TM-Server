@@ -26,7 +26,7 @@ export default function ResultCard({ m, label, count, onPress }: { m: Message; l
         </Text>
         <Text style={{ fontWeight: "700" }}>{m.bot_name ?? displayName(profiles[m.user_id])}</Text>
         <Text numberOfLines={3} style={{ color: C.text }}>
-          {plainText(m.body) || "📎 Attachment"}
+          {plainText(m.body) || "Attachment"}
         </Text>
       </View>
       {!!count && <Badge n={count} />}

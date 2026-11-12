@@ -1,7 +1,8 @@
-import { ActionSheetIOS, Alert, Platform, Pressable, Text } from "react-native";
+import { ActionSheetIOS, Alert, Platform, Pressable } from "react-native";
 import { Tabs, router } from "expo-router";
 import { useChat } from "@/lib/store";
 import { C } from "@/components/ui";
+import { Icon, type IconName } from "@/components/Icon";
 
 const NEW: [string, string][] = [
   ["New message", "/new-dm"],
@@ -14,7 +15,7 @@ function newMenu() {
   else Alert.alert("New", undefined, [...NEW.map(([text, to]) => ({ text, onPress: () => router.push(to) })), { text: "Cancel", style: "cancel" as const }]);
 }
 
-const icon = (glyph: string) => ({ color }: { color: string }) => <Text style={{ color, fontSize: 20 }}>{glyph}</Text>;
+const icon = (name: IconName) => ({ color }: { color: string }) => <Icon name={name} size={22} color={color} />;
 
 export default function TabsLayout() {
   const { unread, threadUnread, channels, memberships, company, notifications } = useChat();
@@ -30,17 +31,17 @@ export default function TabsLayout() {
         options={{
           title: company?.name ?? "Home",
           tabBarLabel: "Home",
-          tabBarIcon: icon("⌂"),
+          tabBarIcon: icon("home"),
           headerRight: () => (
             <Pressable onPress={newMenu} hitSlop={10} style={{ marginRight: 16 }}>
-              <Text style={{ color: "#fff", fontSize: 26 }}>＋</Text>
+              <Icon name="plus" size={24} color="#fff" />
             </Pressable>
           ),
         }}
       />
-      <Tabs.Screen name="dms" options={{ title: "Direct messages", tabBarLabel: "DMs", tabBarIcon: icon("✉"), tabBarBadge: dmUnread || undefined }} />
-      <Tabs.Screen name="activity" options={{ title: "Activity", tabBarIcon: icon("🔔"), tabBarBadge: activity || undefined }} />
-      <Tabs.Screen name="you" options={{ title: "You", tabBarIcon: icon("☺") }} />
+      <Tabs.Screen name="dms" options={{ title: "Direct messages", tabBarLabel: "DMs", tabBarIcon: icon("message-square"), tabBarBadge: dmUnread || undefined }} />
+      <Tabs.Screen name="activity" options={{ title: "Activity", tabBarIcon: icon("bell"), tabBarBadge: activity || undefined }} />
+      <Tabs.Screen name="you" options={{ title: "You", tabBarIcon: icon("user") }} />
     </Tabs>
   );
 }

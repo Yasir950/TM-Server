@@ -47,7 +47,7 @@ const callLength = (sec: number) => {
 
 // The last one out posts the call summary (same message shape as the web app)
 function logCall(channelId: string, userId: string, seconds: number, people: string[]) {
-  const body = people.length > 1 ? `📞 Call ended · ${callLength(seconds)}` : "📞 Missed call";
+  const body = people.length > 1 ? `Call ended · ${callLength(seconds)}` : "Missed call";
   supabase.from("messages").insert({ channel_id: channelId, user_id: userId, body, blocks: [{ type: "call", duration: Math.round(seconds), people }], attachments: [], mentions: [] }).then();
 }
 

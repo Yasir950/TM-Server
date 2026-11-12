@@ -1,5 +1,6 @@
 import { Image, Pressable, StyleSheet, Text, View, type PressableProps } from "react-native";
 import { displayName, type Profile } from "@/lib/supabase";
+import { Icon, type IconName } from "@/components/Icon";
 
 export const C = { brand: "#0f2d4d", blue: "#1264a3", text: "#1d1c1d", muted: "#616061", line: "#e8e8e8", bg: "#ffffff", red: "#e01e5a", green: "#2bac76" };
 
@@ -53,15 +54,18 @@ export function Segmented<T extends string>({ tabs, value, onChange }: { tabs: [
   );
 }
 
-export const GhostButton = ({ title, onPress, danger }: { title: string; onPress: () => void; danger?: boolean }) => (
+export const GhostButton = ({ title, onPress, danger, icon }: { title: string; onPress: () => void; danger?: boolean; icon?: IconName }) => (
   <Pressable onPress={onPress} style={({ pressed }) => [s.ghost, pressed && { backgroundColor: "#f4f4f4" }]}>
-    <Text style={{ color: danger ? C.red : C.text, fontWeight: "600" }}>{title}</Text>
+    <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+      {icon && <Icon name={icon} size={16} color={danger ? C.red : C.text} />}
+      {!!title && <Text style={{ color: danger ? C.red : C.text, fontWeight: "600" }}>{title}</Text>}
+    </View>
   </Pressable>
 );
 
-export const Empty = ({ icon, text }: { icon: string; text: string }) => (
+export const Empty = ({ icon, text }: { icon: IconName; text: string }) => (
   <View style={{ alignItems: "center", padding: 32, gap: 8 }}>
-    <Text style={{ fontSize: 32 }}>{icon}</Text>
+    <Icon name={icon} size={32} color="#b5b5b5" />
     <Text style={{ color: C.muted, textAlign: "center" }}>{text}</Text>
   </View>
 );

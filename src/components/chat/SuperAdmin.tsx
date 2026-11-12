@@ -6,7 +6,7 @@ import { Avatar, askText, RowSkeleton, Skeleton, Tabs, btn, btnGhost, input } fr
 import { useChat } from "./store";
 import { ViewShell } from "./Views";
 import { CompanyLogo } from "./Company";
-import { Icon } from "../icons";
+import { ChannelIcon, Icon } from "../icons";
 
 // Rows of the platform_* RPCs in supabase/migrations/*_super_admin.sql
 type Stats = {
@@ -245,7 +245,7 @@ function Companies({ notify }: { notify: (s: string) => void }) {
                     <Fragment key={ch.id}>
                       {ch.kind === "dm" && chans[i - 1]?.kind !== "dm" && <li className="pt-3 pb-1 text-xs font-semibold tracking-wide text-zinc-400 uppercase">Direct messages</li>}
                       <li className="flex items-center gap-3 rounded-lg px-2 py-1.5 hover:bg-white">
-                        <span className="w-4 shrink-0 text-center text-zinc-400">{ch.kind === "public" ? "#" : ch.kind === "private" ? "🔒" : "@"}</span>
+                        <ChannelIcon kind={ch.kind} size={14} className="w-4 text-zinc-400" />
                         <span className="min-w-0 flex-1 truncate">
                           {ch.kind === "dm" ? ch.people || "Empty conversation" : ch.name}
                           {ch.archived && <span className="ml-2 text-xs text-zinc-400">archived</span>}

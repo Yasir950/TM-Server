@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import { supabase, displayName, activeStatus, type Profile } from "@/lib/supabase";
 import { APP_NAME, RAIL } from "@/lib/brand";
 import type { MentionUsers } from "@/lib/format";
+import { Icon } from "./icons";
 
 const palette = ["#1c75bc", "#39b54a", "#155a91", "#2d8a3a", "#4a90c9", "#5cb85c"];
 export const avatarColor = (profile?: Profile) => palette[(profile?.id.charCodeAt(0) ?? 0) % palette.length];
@@ -46,7 +47,7 @@ export function StatusBadge({ profile, withText }: { profile?: Profile; withText
   if (!s) return null;
   return (
     <span title={s.text} className="inline-flex min-w-0 shrink items-center gap-1">
-      <span className="shrink-0">{s.emoji || "💬"}</span>
+      {s.emoji ? <span className="shrink-0">{s.emoji}</span> : <Icon name="messages" size={14} className="text-zinc-400" />}
       {withText && s.text && <span className="truncate text-sm font-normal text-zinc-500">{s.text}</span>}
     </span>
   );
@@ -71,13 +72,13 @@ export function Mark({ size = 24, className = "" }: { size?: number; className?:
 }
 
 // Docked right pane beside the conversation, like Slack's profile and channel details: the main view narrows to make room
-export function SidePanel({ title, onClose, children, wide }: { title: string; onClose: () => void; children: React.ReactNode; wide?: boolean }) {
+export function SidePanel({ title, onClose, children, wide }: { title: React.ReactNode; onClose: () => void; children: React.ReactNode; wide?: boolean }) {
   return (
     <aside
       className={`tm-slide-in tm-raised flex min-w-0 flex-1 flex-col overflow-hidden bg-white max-md:pb-[env(safe-area-inset-bottom)] md:rounded-2xl lg:flex-none lg:shrink-0 ${wide ? "lg:w-[460px]" : "lg:w-[400px]"}`}
     >
       <header className="flex h-14 shrink-0 items-center gap-2 border-b border-tm-line px-3 md:px-5">
-        <h2 className="min-w-0 flex-1 truncate text-lg font-semibold">{title}</h2>
+        <h2 className="flex min-w-0 flex-1 items-center gap-1.5 truncate text-lg font-semibold">{title}</h2>
         <button onClick={onClose} className="rounded-full p-1.5 text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-700" aria-label="Close">
           ✕
         </button>

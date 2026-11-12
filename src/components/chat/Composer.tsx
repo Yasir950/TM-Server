@@ -375,7 +375,7 @@ function FileChip({ file, onRemove }: { file: File; onRemove: () => void }) {
         // eslint-disable-next-line @next/next/no-img-element
         <img src={url} alt="" className="h-10 w-10 rounded-md object-cover" />
       ) : (
-        <span className="px-1">📎</span>
+        <Icon name="paperclip" size={16} className="mx-1 text-zinc-400" />
       )}
       <span className="max-w-48 truncate">{meta ? "Video clip" : file.name}</span>
       <span className="text-zinc-400">{meta ? clock(meta.duration) : fileSize(file.size)}</span>

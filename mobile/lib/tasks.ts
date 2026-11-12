@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { randomUUID } from "expo-crypto";
 import { supabase, isAdmin, type Profile, type Project, type Task, type TaskPriority, type TaskStatus, type TaskType } from "./supabase";
 import { dayLabel, timeOf } from "./format";
+import type { IconName } from "@/components/Icon";
 
 // Same labels and rules as src/components/chat/Projects.tsx
 export const STATUSES: [TaskStatus, string][] = [
@@ -17,19 +18,20 @@ export const statusColor: Record<TaskStatus, [string, string]> = {
   in_review: ["#fff7e6", "#a15c00"],
   done: ["#e6f6ee", "#1d7a4c"],
 };
-export const PRIORITIES: { id: TaskPriority; label: string; icon: string; color: string }[] = [
-  { id: "highest", label: "Highest", icon: "⏫", color: "#dc2626" },
-  { id: "high", label: "High", icon: "🔼", color: "#f97316" },
-  { id: "medium", label: "Medium", icon: "🟰", color: "#f59e0b" },
-  { id: "low", label: "Low", icon: "🔽", color: "#1264a3" },
-  { id: "lowest", label: "Lowest", icon: "⏬", color: "#38bdf8" },
+// Same icons and colors as the web (src/components/chat/Projects.tsx)
+export const PRIORITIES: { id: TaskPriority; label: string; icon: IconName; color: string }[] = [
+  { id: "highest", label: "Highest", icon: "chevrons-up", color: "#dc2626" },
+  { id: "high", label: "High", icon: "chevron-up", color: "#f97316" },
+  { id: "medium", label: "Medium", icon: "equal", color: "#f59e0b" },
+  { id: "low", label: "Low", icon: "chevron-down", color: "#1264a3" },
+  { id: "lowest", label: "Lowest", icon: "chevrons-down", color: "#38bdf8" },
 ];
 export const priorityOf = (p: TaskPriority) => PRIORITIES.find((x) => x.id === p)!;
-export const TYPES: { id: TaskType; label: string; icon: string }[] = [
-  { id: "task", label: "Task", icon: "☑️" },
-  { id: "bug", label: "Bug", icon: "🐞" },
-  { id: "story", label: "Story", icon: "🔖" },
-  { id: "epic", label: "Epic", icon: "⚡" },
+export const TYPES: { id: TaskType; label: string; icon: IconName; color: string }[] = [
+  { id: "task", label: "Task", icon: "check-square", color: "#1264a3" },
+  { id: "bug", label: "Bug", icon: "bug", color: "#ef4444" },
+  { id: "story", label: "Story", icon: "bookmark", color: "#2bac76" },
+  { id: "epic", label: "Epic", icon: "zap", color: "#a855f7" },
 ];
 export const typeOf = (t: TaskType) => TYPES.find((x) => x.id === t)!;
 

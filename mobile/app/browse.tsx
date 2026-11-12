@@ -4,6 +4,7 @@ import { router } from "expo-router";
 import { supabase, type Channel } from "@/lib/supabase";
 import { useChat } from "@/lib/store";
 import { C, Empty, field } from "@/components/ui";
+import { Icon, channelIcon } from "@/components/Icon";
 
 type Row = Channel & { channel_members: { count: number }[] };
 
@@ -40,12 +41,13 @@ export default function Browse() {
       <FlatList
         data={list}
         keyExtractor={(c) => c.id}
-        ListEmptyComponent={all ? <Empty icon="#" text="No channels match." /> : null}
+        ListEmptyComponent={all ? <Empty icon="hash" text="No channels match." /> : null}
         renderItem={({ item: c }) => (
           <Pressable onPress={() => open(c)} style={{ paddingVertical: 12, borderBottomWidth: 1, borderColor: C.line }}>
-            <Text style={{ fontSize: 16, fontWeight: "700" }}>
-              {c.kind === "private" ? "🔒" : "#"} {c.name}
-            </Text>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+              <Icon name={channelIcon(c.kind)} size={15} color={C.text} />
+              <Text style={{ fontSize: 16, fontWeight: "700" }}>{c.name}</Text>
+            </View>
             <Text style={{ color: C.muted, marginTop: 2 }} numberOfLines={1}>
               {memberships[c.id] ? "✓ Joined · " : ""}
               {c.channel_members[0]?.count ?? 0} members{c.topic ? ` · ${c.topic}` : ""}

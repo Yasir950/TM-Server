@@ -12,6 +12,7 @@ import Body from "./Body";
 import BlockKit, { Unfurl, type Block } from "./BlockKit";
 import EmojiPicker from "./EmojiPicker";
 import { Avatar, Button, C } from "./ui";
+import { Icon } from "./Icon";
 
 const QUICK = ["👍", "❤️", "😂", "🎉", "👀", "✅"];
 
@@ -58,7 +59,12 @@ function MessageRow({ msg, grouped, inThread, reactions, onReact }: Props) {
         {!grouped && <Avatar p={profiles[msg.user_id]} />}
       </Pressable>
       <View style={{ flex: 1 }}>
-        {msg.pinned_at && <Text style={s.pinLabel}>📌 Pinned</Text>}
+        {msg.pinned_at && (
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 3 }}>
+            <Icon name="pin" size={12} color="#a27200" />
+            <Text style={s.pinLabel}>Pinned</Text>
+          </View>
+        )}
         {!grouped && (
           <Text style={s.name}>
             {msg.bot_name ?? displayName(profiles[msg.user_id])}
@@ -68,7 +74,10 @@ function MessageRow({ msg, grouped, inThread, reactions, onReact }: Props) {
         {msg.deleted_at ? (
           <Text style={s.deleted}>This message was deleted.</Text>
         ) : callLog ? (
-          <Text style={s.time}>📞 Meet ended · {callLength(callLog.duration ?? 0)}</Text>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
+            <Icon name="phone" size={13} />
+            <Text style={s.time}>Meet ended · {callLength(callLog.duration ?? 0)}</Text>
+          </View>
         ) : (
           <>
             {!!msg.body && <Body text={msg.body} />}
@@ -108,7 +117,7 @@ function MessageRow({ msg, grouped, inThread, reactions, onReact }: Props) {
               </Pressable>
             ))}
             <Pressable onPress={act(() => setEmoji(true))} style={s.quickBtn}>
-              <Text style={{ fontSize: 22 }}>＋</Text>
+              <Icon name="plus" size={22} color={C.text} />
             </Pressable>
           </View>
           {!inThread && <Item text="Reply in thread" onPress={act(openThread)} />}
@@ -172,11 +181,11 @@ function AttachmentView({ a }: { a: Attachment }) {
       </Pressable>
     );
   if (a.type.startsWith("audio/") && url) return <AudioClip url={url} a={a} />;
-  const icon = a.type.startsWith("video/") ? "🎬" : "📎";
   return (
-    <Pressable onPress={() => url && Linking.openURL(url)} style={s.file}>
-      <Text style={{ color: C.blue }} numberOfLines={1}>
-        {icon} {a.name}
+    <Pressable onPress={() => url && Linking.openURL(url)} style={[s.file, { flexDirection: "row", alignItems: "center", gap: 6 }]}>
+      <Icon name={a.type.startsWith("video/") ? "film" : "paperclip"} size={15} color={C.blue} />
+      <Text style={{ color: C.blue, flexShrink: 1 }} numberOfLines={1}>
+        {a.name}
       </Text>
     </Pressable>
   );
@@ -194,8 +203,9 @@ function AudioClip({ url, a }: { url: string; a: Attachment & { duration?: numbe
   };
   return (
     <Pressable onPress={toggle} style={[s.file, { flexDirection: "row", alignItems: "center", gap: 10, alignSelf: "flex-start" }]}>
-      <Text style={{ fontSize: 18 }}>{st.playing ? "⏸" : "▶️"}</Text>
-      <Text style={{ color: C.text }}>🎙 {clockOf(st.playing || st.currentTime ? st.currentTime : total)}</Text>
+      <Icon name={st.playing ? "pause" : "play"} size={18} color={C.text} />
+      <Icon name="mic" size={14} />
+      <Text style={{ color: C.text }}>{clockOf(st.playing || st.currentTime ? st.currentTime : total)}</Text>
     </Pressable>
   );
 }

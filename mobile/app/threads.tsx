@@ -22,7 +22,7 @@ export default function Threads() {
       style={{ backgroundColor: C.bg }}
       data={threads ?? []}
       keyExtractor={(m) => m.id}
-      ListEmptyComponent={threads ? <Empty icon="💬" text="No threads yet. Reply to a message to start one." /> : null}
+      ListEmptyComponent={threads ? <Empty icon="message-circle" text="No threads yet. Reply to a message to start one." /> : null}
       renderItem={({ item }) => <ResultCard m={{ ...item, parent_id: null }} label={`${item.reply_count} ${item.reply_count === 1 ? "reply" : "replies"} · `} count={threadUnread[item.id]?.unread} onPress={() => router.push(`/t/${item.id}?c=${item.channel_id}`)} />}
     />
   );

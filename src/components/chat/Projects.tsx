@@ -349,6 +349,46 @@ function useLiveTasks(load: () => PromiseLike<{ data: unknown }>, filter: string
 }
 
 type Mode = "board" | "list";
+// A task, with its project when shown outside that project's board
+type TaskRow = Task & { projects?: Pick<Project, "key" | "name"> | null };
+
+// Board or list, remembered per view in this browser
+function useMode(storageKey: string, fallback: Mode) {
+  const [mode, setModeState] = useState<Mode>(() => {
+    try {
+      const v = localStorage.getItem(storageKey);
+      return v === "list" || v === "board" ? v : fallback;
+    } catch {
+      return fallback;
+    }
+  });
+  const setMode = (m: Mode) => {
+    setModeState(m);
+    try {
+      localStorage.setItem(storageKey, m);
+    } catch {}
+  };
+  return [mode, setMode] as const;
+}
+
+function ModeToggle({ mode, onChange }: { mode: Mode; onChange: (m: Mode) => void }) {
+  return (
+    <span className="flex rounded-xl bg-tm-surface p-1">
+      {(["board", "list"] as const).map((m) => (
+        <button
+          key={m}
+          onClick={() => onChange(m)}
+          title={m === "board" ? "Board" : "List"}
+          aria-pressed={mode === m}
+          className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-sm font-medium transition ${mode === m ? "tm-raised bg-white text-tm-blue" : "text-zinc-500 hover:text-zinc-800"}`}
+        >
+          <Icon name={m === "board" ? "kanban" : "list"} size={15} />
+          <span className="hidden lg:inline">{m === "board" ? "Board" : "List"}</span>
+        </button>
+      ))}
+    </span>
+  );
+}
 
 function ProjectBoard({ projectId }: { projectId: string }) {
   const { me, profiles, projects, openProject, openTask } = useChat();
@@ -356,19 +396,7 @@ function ProjectBoard({ projectId }: { projectId: string }) {
   const canManage = useCanManage(project);
   const inProject = project.project_members.some((m) => m.user_id === me.id);
   const [tasks, setTasks] = useLiveTasks(() => supabase.from("tasks").select("*").eq("project_id", projectId).order("position"), `project_id=eq.${projectId}`, [projectId]);
-  const [mode, setModeState] = useState<Mode>(() => {
-    try {
-      return localStorage.getItem("tm:board-mode") === "list" ? "list" : "board";
-    } catch {
-      return "board";
-    }
-  });
-  const setMode = (m: Mode) => {
-    setModeState(m);
-    try {
-      localStorage.setItem("tm:board-mode", m);
-    } catch {}
-  };
+  const [mode, setMode] = useMode("tm:board-mode", "board");
   const [q, setQ] = useState("");
   const [people, setPeople] = useState<string[]>([]);
   const [type, setType] = useState<TaskType | "">("");
@@ -406,18 +434,8 @@ function ProjectBoard({ projectId }: { projectId: string }) {
         <span className="min-w-0 truncate text-lg font-semibold">{project.name}</span>
         {project.archived && <span className="shrink-0 rounded-md bg-zinc-100 px-1.5 py-0.5 text-xs text-zinc-500">Archived</span>}
         <span className="ml-auto flex shrink-0 items-center gap-1.5">
-          <span className="hidden rounded-xl bg-tm-surface p-1 sm:flex">
-            {(["board", "list"] as const).map((m) => (
-              <button
-                key={m}
-                onClick={() => setMode(m)}
-                title={m === "board" ? "Board" : "List"}
-                className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-sm font-medium transition ${mode === m ? "tm-raised bg-white text-tm-blue" : "text-zinc-500 hover:text-zinc-800"}`}
-              >
-                <Icon name={m === "board" ? "kanban" : "list"} size={15} />
-                <span className="hidden lg:inline">{m === "board" ? "Board" : "List"}</span>
-              </button>
-            ))}
+          <span className="hidden sm:flex">
+            <ModeToggle mode={mode} onChange={setMode} />
           </span>
           <button onClick={() => setSettings(true)} title="Project settings and people" className="rounded-lg p-2 text-zinc-500 transition hover:bg-tm-surface hover:text-tm-blue">
             <Icon name={canManage ? "settings" : "users"} size={18} />
@@ -499,16 +517,40 @@ function ProjectBoard({ projectId }: { projectId: string }) {
   );
 }
 
-function Board({ project, tasks, all, canAdd, onMove, onAdded }: { project: Project; tasks: Task[]; all: Task[]; canAdd: boolean; onMove: (id: string, patch: Partial<Task>) => void; onAdded: (t: Task) => void }) {
+// Without a project (My tasks) the board spans projects: dragging changes the status only, since
+// positions order cards within one project's columns
+function Board({
+  project,
+  tasks,
+  all,
+  canAdd,
+  onMove,
+  onAdded,
+  className = "flex min-h-0 flex-1 gap-3 overflow-x-auto p-3 md:p-4",
+}: {
+  project?: Project;
+  tasks: TaskRow[];
+  all: TaskRow[];
+  canAdd: boolean;
+  onMove: (id: string, patch: Partial<Task>) => void;
+  onAdded?: (t: Task) => void;
+  className?: string;
+}) {
   const [drag, setDrag] = useState<string | null>(null);
   // Where the dragged card would land: before a card, or at the end of a column (before = null)
   const [over, setOver] = useState<{ status: TaskStatus; before: string | null } | null>(null);
 
-  const column = (s: TaskStatus) => tasks.filter((t) => t.status === s).sort((a, b) => a.position - b.position);
+  // Across projects the cards keep the order they came in (most recently updated first)
+  const column = (s: TaskStatus) => {
+    const col = tasks.filter((t) => t.status === s);
+    return project ? col.sort((a, b) => a.position - b.position) : col;
+  };
 
   const drop = () => {
     const task = all.find((t) => t.id === drag);
-    if (task && over) {
+    if (task && over && !project) {
+      if (task.status !== over.status) onMove(task.id, { status: over.status });
+    } else if (task && over) {
       // Position between the neighbours in the full column, so hidden (filtered) cards keep their order
       const col = all.filter((t) => t.status === over.status && t.id !== task.id).sort((a, b) => a.position - b.position);
       const i = over.before ? col.findIndex((t) => t.id === over.before) : col.length;
@@ -522,7 +564,7 @@ function Board({ project, tasks, all, canAdd, onMove, onAdded }: { project: Proj
   };
 
   return (
-    <div className="flex min-h-0 flex-1 gap-3 overflow-x-auto p-3 md:p-4">
+    <div className={className}>
       {STATUSES.map(([s, label]) => {
         const items = column(s);
         const target = drag && over?.status === s;
@@ -559,14 +601,14 @@ function Board({ project, tasks, all, canAdd, onMove, onAdded }: { project: Proj
                     if (over?.status !== s || over.before !== before) setOver({ status: s, before });
                   }}
                 >
-                  {target && over?.before === t.id && drag !== t.id && <div className="mb-2 h-0.5 rounded-full bg-tm-blue" />}
+                  {project && target && over?.before === t.id && drag !== t.id && <div className="mb-2 h-0.5 rounded-full bg-tm-blue" />}
                   <TaskCard project={project} task={t} dragging={drag === t.id} onDragStart={() => setDrag(t.id)} onDragEnd={() => (setDrag(null), setOver(null))} />
                 </div>
               ))}
-              {target && over?.before === null && <div className="h-0.5 rounded-full bg-tm-blue" />}
+              {project && target && over?.before === null && <div className="h-0.5 rounded-full bg-tm-blue" />}
               {items.length === 0 && !drag && <p className="px-2 py-6 text-center text-xs text-zinc-400">No tasks</p>}
             </div>
-            {canAdd && <QuickAdd project={project} status={s} after={all.filter((t) => t.status === s)} onAdded={onAdded} />}
+            {canAdd && project && onAdded && <QuickAdd project={project} status={s} after={all.filter((t) => t.status === s)} onAdded={onAdded} />}
           </section>
         );
       })}
@@ -574,9 +616,10 @@ function Board({ project, tasks, all, canAdd, onMove, onAdded }: { project: Proj
   );
 }
 
-function TaskCard({ project, task, dragging, onDragStart, onDragEnd }: { project: Project; task: Task; dragging: boolean; onDragStart: () => void; onDragEnd: () => void }) {
+function TaskCard({ project, task, dragging, onDragStart, onDragEnd }: { project?: Project; task: TaskRow; dragging: boolean; onDragStart: () => void; onDragEnd: () => void }) {
   const { profiles, openTask } = useChat();
   const late = overdue(task);
+  const key = project?.key ?? task.projects?.key ?? "";
   return (
     <button
       draggable
@@ -590,6 +633,7 @@ function TaskCard({ project, task, dragging, onDragStart, onDragEnd }: { project
       className={`tm-raised block w-full rounded-xl bg-white p-3 text-left transition hover:ring-2 hover:ring-tm-blue/20 ${dragging ? "opacity-40" : ""}`}
     >
       <div className={`line-clamp-3 text-sm ${task.status === "done" ? "text-zinc-500" : "text-zinc-900"}`}>{task.title}</div>
+      {!project && task.projects && <div className="mt-0.5 truncate text-xs text-zinc-400">{task.projects.name}</div>}
       {task.labels.length > 0 && (
         <div className="mt-1.5 flex flex-wrap gap-1">
           {task.labels.slice(0, 3).map((l) => (
@@ -602,7 +646,7 @@ function TaskCard({ project, task, dragging, onDragStart, onDragEnd }: { project
       <div className="mt-2.5 flex items-center gap-1.5">
         <TypeIcon type={task.type} />
         <span className={`text-xs font-medium text-zinc-500 ${task.status === "done" ? "line-through" : ""}`}>
-          {project.key}-{task.number}
+          {key}-{task.number}
         </span>
         {task.due_date && (
           <span className={`flex items-center gap-0.5 rounded px-1 text-[11px] ${late ? "bg-red-50 font-semibold text-red-600" : "text-zinc-500"}`} title={late ? "Overdue" : "Due date"}>
@@ -686,7 +730,7 @@ function TaskTable({
   className = "min-h-0 flex-1 overflow-auto p-3 md:p-4",
 }: {
   project?: Project;
-  tasks: (Task & { projects?: Pick<Project, "key" | "name"> | null })[];
+  tasks: TaskRow[];
   onUpdate: (id: string, patch: Partial<Task>) => void;
   onOpen: (id: string) => void;
   className?: string;
@@ -1576,6 +1620,7 @@ export function MyTasksView() {
   const [scope, setScope] = useState<Scope>("assigned");
   const [creating, setCreating] = useState(false);
   const [showDone, setShowDone] = useState(false);
+  const [mode, setMode] = useMode("tm:my-tasks-mode", "list");
   const ids = projects.map((p) => p.id);
   const idKey = ids.join(",");
   const column = scope === "assigned" ? "assignee_id" : "reporter_id";
@@ -1610,10 +1655,13 @@ export function MyTasksView() {
       title="My tasks"
       subtitle={late.length ? `${late.length} overdue` : undefined}
       action={
-        <button onClick={() => setCreating(true)} className={`${btn} flex items-center gap-1.5`}>
-          <Icon name="plus" size={16} />
-          <span className="hidden sm:inline">Create task</span>
-        </button>
+        <span className="flex items-center gap-1.5">
+          <ModeToggle mode={mode} onChange={setMode} />
+          <button onClick={() => setCreating(true)} className={`${btn} flex items-center gap-1.5`}>
+            <Icon name="plus" size={16} />
+            <span className="hidden sm:inline">Create task</span>
+          </button>
+        </span>
       }
     >
       <Tabs
@@ -1628,12 +1676,14 @@ export function MyTasksView() {
         <CardSkeleton />
       ) : withProject.length === 0 ? (
         <EmptyState icon="checkSquare" text={scope === "assigned" ? "Nothing assigned to you. Enjoy the quiet." : "You haven't created any tasks yet."} />
+      ) : mode === "board" ? (
+        <Board tasks={withProject} all={withProject} canAdd={false} onMove={update} className="-mx-3 flex gap-3 overflow-x-auto px-3 pb-2 md:-mx-6 md:px-6" />
       ) : (
         <div>
           {open.length > 0 ? (
             <TaskTable tasks={open} onUpdate={update} onOpen={openTask} className="overflow-x-auto" />
           ) : (
-            <p className="p-6 text-center text-sm text-zinc-400">All done. 🎉</p>
+            <p className="p-6 text-center text-sm text-zinc-400">All done.</p>
           )}
           {done.length > 0 && (
             <button onClick={() => setShowDone(!showDone)} className="mt-4 flex items-center gap-1.5 py-2 text-xs font-semibold tracking-wide text-zinc-400 uppercase transition hover:text-zinc-700">

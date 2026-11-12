@@ -7,6 +7,7 @@ import { useChat } from "@/lib/store";
 import { slug, timeOf } from "@/lib/format";
 import PeoplePicker from "@/components/PeoplePicker";
 import { Avatar, Button, C, Empty, GhostButton, Label, Segmented, field } from "@/components/ui";
+import { ChannelTitle } from "@/components/Icon";
 
 type Tab = "about" | "members" | "pinned" | "files" | "integrations";
 type Webhook = { id: string; name: string; token: string; created_by: string };
@@ -14,7 +15,7 @@ type Webhook = { id: string; name: string; token: string; created_by: string };
 // Port of ChannelDetails (src/components/chat/Modals.tsx)
 export default function Details() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { uid, channels, memberships, profiles, online, reload, updateMembership, channelTitle } = useChat();
+  const { uid, channels, memberships, profiles, online, reload, updateMembership, channelTitle, superAdmin } = useChat();
   const channel = channels[id];
   const [tab, setTab] = useState<Tab>("about");
   const [members, setMembers] = useState<string[]>([]);
@@ -85,7 +86,7 @@ export default function Details() {
     ["pinned", "Pinned"],
     ["files", "Files"],
   ];
-  if (!isDM) tabs.push(["integrations", "Hooks"]);
+  if (!isDM && superAdmin) tabs.push(["integrations", "Hooks"]);
 
   if (adding)
     return (
@@ -99,7 +100,12 @@ export default function Details() {
 
   return (
     <View style={{ flex: 1, backgroundColor: C.bg }}>
-      <Stack.Screen options={{ title: isDM ? channelTitle(channel) : `${channel.kind === "private" ? "🔒" : "#"} ${channel.name}` }} />
+      <Stack.Screen
+        options={{
+          title: isDM ? channelTitle(channel) : (channel.name ?? ""),
+          headerTitle: ({ tintColor }) => <ChannelTitle kind={channel.kind} text={isDM ? channelTitle(channel) : (channel.name ?? "")} color={tintColor ?? "#fff"} />,
+        }}
+      />
       <Segmented tabs={tabs} value={tab} onChange={setTab} />
       <ScrollView contentContainerStyle={{ padding: 16, paddingTop: 0, gap: 16 }} keyboardShouldPersistTaps="handled">
         {tab === "about" && (
@@ -131,10 +137,10 @@ export default function Details() {
               <Text style={{ color: C.muted, fontSize: 12 }}>Default: every message in DMs, only mentions in channels.</Text>
             </View>
             {!!error && <Text style={{ color: C.red }}>{error}</Text>}
-            {!isDM && <GhostButton title="📝 Canvas" onPress={() => router.push(`/canvas/${id}`)} />}
-            <GhostButton title="📅 Schedule a meeting" onPress={() => router.push(`/schedule?c=${id}`)} />
-            {mem && <GhostButton title={mem.starred ? "★ Unstar" : "☆ Star"} onPress={() => updateMembership(id, { starred: !mem.starred })} />}
-            {mem && <GhostButton title={mem.muted ? "🔔 Unmute" : "🔕 Mute"} onPress={() => updateMembership(id, { muted: !mem.muted })} />}
+            {!isDM && <GhostButton icon="file-text" title="Canvas" onPress={() => router.push(`/canvas/${id}`)} />}
+            <GhostButton icon="calendar" title="Schedule a meeting" onPress={() => router.push(`/schedule?c=${id}`)} />
+            {mem && <GhostButton icon="star" title={mem.starred ? "Unstar" : "Star"} onPress={() => updateMembership(id, { starred: !mem.starred })} />}
+            {mem && <GhostButton icon={mem.muted ? "bell" : "bell-off"} title={mem.muted ? "Unmute" : "Mute"} onPress={() => updateMembership(id, { muted: !mem.muted })} />}
             {isDM && members.length > 2 && (
               <View style={{ gap: 8 }}>
                 <Label>Convert to private channel</Label>
@@ -142,7 +148,7 @@ export default function Details() {
                 <GhostButton title="Convert" onPress={convert} />
               </View>
             )}
-            {!isDM && <GhostButton title={channel.archived ? "Unarchive" : "🗄️ Archive"} onPress={archive} />}
+            {!isDM && <GhostButton icon="archive" title={channel.archived ? "Unarchive" : "Archive"} onPress={archive} />}
             {!isDM && mem && <GhostButton title="Leave channel" danger onPress={leave} />}
           </>
         )}
@@ -166,7 +172,7 @@ export default function Details() {
         )}
         {tab === "pinned" && <Pinned channelId={id} />}
         {tab === "files" && <Files channelId={id} />}
-        {tab === "integrations" && <Webhooks channelId={id} />}
+        {tab === "integrations" && superAdmin && <Webhooks channelId={id} />}
       </ScrollView>
     </View>
   );
@@ -185,7 +191,7 @@ function Pinned({ channelId }: { channelId: string }) {
       .order("pinned_at", { ascending: false })
       .then(({ data }) => setPins((data as Message[]) ?? []));
   }, [channelId]);
-  if (pins && !pins.length) return <Empty icon="📌" text="No pinned messages yet. Long-press a message → Pin." />;
+  if (pins && !pins.length) return <Empty icon="pin" text="No pinned messages yet. Long-press a message → Pin." />;
   return (
     <>
       {pins?.map((m) => (
@@ -193,7 +199,7 @@ function Pinned({ channelId }: { channelId: string }) {
           <Text style={{ color: C.muted, fontSize: 12 }}>
             {m.bot_name ?? displayName(profiles[m.user_id])} · {timeOf(m.created_at)}
           </Text>
-          <Text numberOfLines={3}>{m.body || "📎 Attachment"}</Text>
+          <Text numberOfLines={3}>{m.body || "Attachment"}</Text>
         </Pressable>
       ))}
     </>
@@ -215,7 +221,7 @@ function Files({ channelId }: { channelId: string }) {
       .then(({ data }) => setMsgs((data as Message[]) ?? []));
   }, [channelId]);
   const files = (msgs ?? []).flatMap((m) => m.attachments.map((a) => ({ a, m })));
-  if (msgs && !files.length) return <Empty icon="📁" text="No files shared here yet." />;
+  if (msgs && !files.length) return <Empty icon="folder" text="No files shared here yet." />;
   return (
     <>
       {files.map(({ a, m }) => (
