@@ -16,7 +16,7 @@ import Huddle, { HuddleElsewhere, IncomingHuddle } from "./Huddle";
 import { MeetingsView, useNow } from "./Meetings";
 import { MyTasksView, ProjectsView, SidebarProjects, TaskDialog } from "./Projects";
 import { ChannelIcon, Icon, type IconName } from "../icons";
-import { APP_NAME, CALL, DESKTOP_MAC_URL, DESKTOP_WIN_URL, RAIL } from "@/lib/brand";
+import { APP_NAME, CALL, DESKTOP_AUTO_UPDATE_SINCE, DESKTOP_MAC_URL, DESKTOP_RELEASE, DESKTOP_WIN_URL, RAIL } from "@/lib/brand";
 import { enablePush, signOut } from "@/lib/push";
 
 export default function Chat() {
@@ -66,6 +66,7 @@ export default function Chat() {
 
   return (
     <div className="flex h-full flex-col pt-[env(safe-area-inset-top)]" style={{ background: RAIL }}>
+      <DesktopUpdateBar />
       <TopBar onSwitcher={() => setSwitcher(true)} className={mobileList} />
       <div className="flex min-h-0 flex-1 flex-col-reverse md:flex-row">
         <Rail tab={tab} onTab={setTab} className={mobileList} />
@@ -226,6 +227,43 @@ function TopBar({ onSwitcher, className }: { onSwitcher: () => void; className: 
       {statusModal && <StatusModal onClose={() => setStatusModal(false)} />}
       {profileModal && <ProfileModal onClose={() => setProfileModal(false)} />}
     </header>
+  );
+}
+
+// Desktop app too old to update itself (see DESKTOP_AUTO_UPDATE_SINCE): ask for a one-time install. Hidden for the session once dismissed.
+function DesktopUpdateBar() {
+  const [show, setShow] = useState(false);
+  const mac = /Mac/i.test(navigator.platform || navigator.userAgent);
+
+  useEffect(() => {
+    const v = /WorkchimeDesktop\/(\d+)\.(\d+)\.(\d+)/.exec(navigator.userAgent)?.slice(1).map(Number);
+    if (!v) return;
+    const i = v.findIndex((n, k) => n !== DESKTOP_AUTO_UPDATE_SINCE[k]);
+    let dismissed = false;
+    try {
+      dismissed = sessionStorage.getItem("desktop-update-dismissed") === "1";
+    } catch {}
+    setShow(i >= 0 && v[i] < DESKTOP_AUTO_UPDATE_SINCE[i] && !dismissed);
+  }, []);
+
+  if (!show) return null;
+  const dismiss = () => {
+    try {
+      sessionStorage.setItem("desktop-update-dismissed", "1");
+    } catch {}
+    setShow(false);
+  };
+  return (
+    <div className="flex items-center gap-3 bg-amber-50 px-4 py-2 text-sm text-amber-900">
+      <Icon name="download" size={16} className="shrink-0" />
+      <span className="flex-1">A new version of the desktop app is ready. Install it once, and future updates arrive on their own.</span>
+      <a href={`${DESKTOP_RELEASE}/${mac ? "Workchime.dmg" : "Workchime-Setup.exe"}`} target="_blank" rel="noreferrer" className="rounded-lg bg-amber-900 px-3 py-1 font-medium text-white hover:bg-amber-800">
+        Download update
+      </a>
+      <button onClick={dismiss} className="rounded-lg p-1 hover:bg-amber-100" aria-label="Dismiss">
+        <Icon name="x" size={14} />
+      </button>
+    </div>
   );
 }
 

@@ -21,12 +21,21 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # latest*.yml is what installed apps poll (electron-updater); the blockmaps allow small delta downloads,
+          # and Mac updates install from the .zip, not the .dmg
           - os: windows-latest
             cmd: dist:win
-            file: desktop/dist/Workchime-Setup.exe
+            files: |
+              desktop/dist/Workchime-Setup.exe
+              desktop/dist/Workchime-Setup.exe.blockmap
+              desktop/dist/latest.yml
           - os: macos-latest
             cmd: dist:mac
-            file: desktop/dist/Workchime.dmg
+            files: |
+              desktop/dist/Workchime.dmg
+              desktop/dist/Workchime.zip
+              desktop/dist/Workchime.zip.blockmap
+              desktop/dist/latest-mac.yml
     runs-on: ${{ matrix.os }}
     defaults:
       run:
@@ -37,6 +46,14 @@ jobs:
         with:
           node-version: 22
       - run: npm install
+      # Installed apps only update to a higher version, so every build gets one: major.minor from package.json,
+      # patch = this run's number (the same on the Windows and Mac jobs). A desktop-v1.2.3 tag uses its own version.
+      - run: |
+          if [ "${{ github.ref_type }}" = "tag" ]; then v="${GITHUB_REF_NAME#desktop-v}"
+          else v="$(node -p "require('./package.json').version.split('.').slice(0, 2).join('.')").${{ github.run_number }}"; fi
+          npm version "$v" --no-git-tag-version --allow-same-version
+          echo "Building version $v"
+        shell: bash
       # Unset secrets arrive as empty strings, and electron-builder reads an empty CSC_LINK as the current
       # directory ("not a file"), so drop them before building
       - run: |
@@ -53,4 +70,6 @@ jobs:
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_type == 'tag' && github.ref_name || 'desktop-latest' }}
-          files: ${{ matrix.file }}
+          files: ${{ matrix.files }}
+          # Keep the release marked as the repo's latest: the updater looks there for latest.yml
+          make_latest: true
