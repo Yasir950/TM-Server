@@ -7,6 +7,7 @@ import BlockKit from "./BlockKit";
 import { Avatar, EmojiPopover, Mark, StatusBadge, mentionUsers, useSignedUrl } from "../ui";
 import { Icon, type IconName } from "../icons";
 import { useChat } from "./store";
+import { InCallIcon } from "./InCall";
 import { toggleSaved, useSavedIds } from "./useMessages";
 import { EditorContent } from "@tiptap/react";
 import { FormatBar, useRichEditor } from "./RichEditor";
@@ -131,6 +132,7 @@ export default function MessageItem({ msg, reactions, grouped, inThread, highlig
               <button className="font-semibold hover:underline" onClick={() => showMember(msg.user_id)}>{displayName(author)}</button>
             )}
             {msg.bot_name && <span className="rounded bg-tm-blue-light px-1 text-[10px] font-bold text-tm-blue">APP</span>}
+            {!msg.bot_name && <InCallIcon userId={msg.user_id} />}
             <StatusBadge profile={msg.bot_name ? undefined : author} />
             <span className="text-xs text-zinc-400">{timeOf(msg.created_at)}</span>
           </div>

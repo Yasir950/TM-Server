@@ -13,11 +13,13 @@ import { MeetingBanner, ScheduleMeeting } from "./Meetings";
 import { Avatar, MessageSkeleton, StatusBadge } from "../ui";
 import { ChannelIcon, Icon } from "../icons";
 import { CALL, call } from "@/lib/brand";
+import { InCallIcon } from "./InCall";
 
 export default function ChannelView({ channelId }: { channelId: string }) {
   const { me, channels, memberships, profiles, channelTitle, markRead, dmMembers, focusId, updateMembership, showChannelDetails } = useChat();
   const channel = channels[channelId];
-  const [channelMembers, setChannelMembers] = useState<string[] | null>(null);
+  // User id → when they last read this conversation
+  const [reads, setReads] = useState<Record<string, string> | null>(null);
   const { messages, reactions, setReactions, upsert, hasMore, loading, loadOlder } = useMessages(channelId, null);
   const [lastRead] = useState(memberships[channelId]?.last_read_at);
   const [typing, setTyping] = useState<Record<string, number>>({});
@@ -34,25 +36,47 @@ export default function ChannelView({ channelId }: { channelId: string }) {
     return () => document.removeEventListener("visibilitychange", onVis);
   }, [channelId, messages.length, markRead]);
 
-  // Channel members for the header's faces (DMs already have theirs in the store); refreshed on joins and leaves
-  const isChannel = channel && channel.kind !== "dm";
+  // Members and how far each has read: the header's faces (DMs already have theirs in the store) and the
+  // seen avatars under messages. Reads move live as people open the conversation; joins and leaves refetch.
   useEffect(() => {
-    if (!isChannel) return;
     const load = () =>
       supabase
         .from("channel_members")
-        .select("user_id")
+        .select("user_id, last_read_at")
         .eq("channel_id", channelId)
-        .then(({ data }) => setChannelMembers((data ?? []).map((r) => r.user_id)));
+        .then(({ data }) => setReads(Object.fromEntries((data ?? []).map((r) => [r.user_id, r.last_read_at]))));
     load();
     const ch = supabase
       .channel(`members:${channelId}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "channel_members", filter: `channel_id=eq.${channelId}` }, load)
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "channel_members", filter: `channel_id=eq.${channelId}` }, ({ new: r }) => {
+        const row = r as { user_id: string; last_read_at: string };
+        setReads((prev) => (prev && prev[row.user_id] !== row.last_read_at ? { ...prev, [row.user_id]: row.last_read_at } : prev));
+      })
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "channel_members", filter: `channel_id=eq.${channelId}` }, load)
+      .on("postgres_changes", { event: "DELETE", schema: "public", table: "channel_members" }, load)
       .subscribe();
     return () => {
       supabase.removeChannel(ch);
     };
-  }, [channelId, isChannel]);
+  }, [channelId]);
+  const channelMembers = useMemo(() => (reads ? Object.keys(reads) : null), [reads]);
+
+  // Seen avatars, like Instagram: each other member's face sits under the latest message they've read.
+  // Under their own message it would say nothing, so it's left out there.
+  const seen = useMemo(() => {
+    const out: Record<string, string[]> = {};
+    if (!reads) return out;
+    const shown = messages.filter((m) => !m.deleted_at);
+    for (const [id, at] of Object.entries(reads)) {
+      if (id === me.id || !profiles[id]) continue;
+      const t = Date.parse(at);
+      let i = shown.length - 1;
+      while (i >= 0 && Date.parse(shown[i].created_at) > t) i--;
+      const m = shown[i];
+      if (m && !(m.user_id === id && !m.bot_name)) (out[m.id] ??= []).push(id);
+    }
+    return out;
+  }, [reads, messages, me.id, profiles]);
 
   // Typing indicator via broadcast
   useEffect(() => {
@@ -107,6 +131,7 @@ export default function ChannelView({ channelId }: { channelId: string }) {
         </button>
         {isDM && dmPartner && (
           <span className="hidden sm:contents">
+            <InCallIcon userId={dmPartner.id} size={15} />
             <StatusBadge profile={dmPartner} withText />
           </span>
         )}
@@ -155,6 +180,7 @@ export default function ChannelView({ channelId }: { channelId: string }) {
         hasMore={hasMore}
         loadOlder={loadOlder}
         lastRead={lastRead}
+        seen={seen}
         focusId={focusId}
         onReact={(m, e) => toggleReaction(m, e, me.id, reactions, setReactions)}
         intro={
@@ -208,14 +234,16 @@ type ListProps = {
   hasMore?: boolean;
   loadOlder?: () => Promise<void>;
   lastRead?: string;
+  // Message id → people whose read position is that message
+  seen?: Record<string, string[]>;
   inThread?: boolean;
   intro?: React.ReactNode;
   focusId?: string | null;
   onReact: (m: Message, emoji: string) => void;
 };
 
-export function MessageList({ messages: all, reactions, loading, hasMore, loadOlder, lastRead, inThread, intro, focusId, onReact }: ListProps) {
-  const { me } = useChat();
+export function MessageList({ messages: all, reactions, loading, hasMore, loadOlder, lastRead, seen, inThread, intro, focusId, onReact }: ListProps) {
+  const { me, profiles } = useChat();
   // Deleted messages disappear; one that still has replies stays as a placeholder so its thread remains reachable
   const messages = useMemo(() => all.filter((m) => !m.deleted_at || m.reply_count > 0), [all]);
   const box = useRef<HTMLDivElement>(null);
@@ -330,9 +358,32 @@ export function MessageList({ messages: all, reactions, loading, hasMore, loadOl
               reactions={reactions.filter((r) => r.message_id === m.id)}
               onReact={(e) => onReact(m, e)}
             />
+            {seen?.[m.id] && <SeenBy ids={seen[m.id]} names={seen[m.id].map((id) => displayName(profiles[id]))} />}
           </Fragment>
         );
       })}
+    </div>
+  );
+}
+
+// Small faces under a message for the people who have read up to it
+function SeenBy({ ids, names }: { ids: string[]; names: string[] }) {
+  const { profiles } = useChat();
+  const MAX = 6;
+  return (
+    <div className="tm-fade flex justify-end px-6 pt-0.5 pb-1" title={`Seen by ${names.join(", ")}`}>
+      <span className="flex -space-x-1">
+        {ids.slice(0, MAX).map((id) => (
+          <span key={id} className="rounded-[30%] ring-2 ring-white">
+            <Avatar profile={profiles[id]} size={16} />
+          </span>
+        ))}
+        {ids.length > MAX && (
+          <span className="flex h-[16px] min-w-[16px] items-center justify-center rounded-[30%] bg-zinc-200 px-0.5 text-[9px] font-semibold text-zinc-600 ring-2 ring-white">
+            +{ids.length - MAX}
+          </span>
+        )}
+      </span>
     </div>
   );
 }

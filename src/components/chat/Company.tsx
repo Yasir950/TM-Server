@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { supabase, displayName, activeStatus, inDnd, isAdmin, uploadImage, type Company, type Profile, type Role } from "@/lib/supabase";
 import { signOut } from "@/lib/push";
 import { Avatar, askText, Logo, Modal, SidePanel, StatusBadge, Tabs, avatarColor, btn, btnGhost, input } from "../ui";
+import { InCallIcon } from "./InCall";
 import { useChat } from "./store";
 import { ViewShell } from "./Views";
 import { Icon } from "../icons";
@@ -360,6 +361,7 @@ export function MembersView() {
                   <span className="block min-w-0 p-2">
                     <span className="flex items-center gap-1 text-sm font-semibold text-zinc-900">
                       <span className="truncate">{displayName(p)}</span>
+                      <InCallIcon userId={p.id} />
                       <StatusBadge profile={p} />
                       {m.user_id === me.id && <span className="shrink-0 text-xs font-normal text-zinc-400">(you)</span>}
                     </span>

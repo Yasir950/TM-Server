@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { supabase, displayName, type Channel, type Membership, type Message, type Webhook } from "@/lib/supabase";
 import { timeOf, fileSize } from "@/lib/format";
 import { Avatar, askText, Modal, RowSkeleton, SidePanel, StatusBadge, Tabs, btn, btnGhost, input } from "../ui";
+import { InCallIcon } from "./InCall";
 import { useChat } from "./store";
 import { ChannelIcon, Icon, type IconName } from "../icons";
 
@@ -329,6 +330,7 @@ export function ChannelDetails({ channel, onClose }: { channel: Channel; onClose
                     <Avatar profile={profiles[id]} size={30} online={online.has(id)} away={away.has(id)} />
                     <span className="font-medium">{displayName(profiles[id])}</span>
                     {id === me.id && <span className="text-sm text-zinc-400">(you)</span>}
+                    <InCallIcon userId={id} />
                     <StatusBadge profile={profiles[id]} withText />
                   </button>
                 </li>

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { supabase, displayName, activeStatus, inDnd, isAdmin, meetingLive, type Channel, type Message, type Profile } from "@/lib/supabase";
 import { dayLabel, timeOf } from "@/lib/format";
 import { Avatar, Logo, Mark, RowSkeleton, StatusBadge, btn } from "../ui";
+import { InCallIcon } from "./InCall";
 import { useChat } from "./store";
 import ChannelView from "./ChannelView";
 import ThreadPanel from "./ThreadPanel";
@@ -717,6 +718,7 @@ function Item({ id, icon, label, status }: { id: string; icon: React.ReactNode; 
       <span className="min-w-0 flex-1">
         <span className={`flex items-center gap-1 text-[15px] ${bold ? "font-bold text-zinc-900" : active ? "font-semibold" : ""}`}>
           <span className="truncate">{label}</span>
+          <InCallIcon userId={status?.id} />
           <StatusBadge profile={status} />
         </span>
       </span>
