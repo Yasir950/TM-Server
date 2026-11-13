@@ -132,14 +132,15 @@ export default function Privacy() {
         <P>
           We keep your information while your account is active. Company admins can set message retention so older messages are deleted
           automatically. When you delete a message it is removed from view, and when an account or company is deleted its data is permanently
-          removed from our systems.
+          removed from our systems, apart from the limited records described on the <A href="/delete-account">account deletion page</A>.
         </P>
 
         <H2 id="delete">Deleting your account and data</H2>
         <P>
-          You can ask us to delete your account at any time on our <A href="/delete-account">account deletion page</A>. We permanently delete
-          your account, profile, messages and files within 30 days. If you own a company workspace, transfer ownership to another member or
-          ask us to delete the whole company. You can also remove individual messages and files yourself in the app, and leave a company from
+          You can ask us to delete your account at any time on our <A href="/delete-account">account deletion page</A>, which lists exactly
+          what is deleted and what is kept. We permanently delete your account, profile, messages and files within 30 days; backup copies are
+          overwritten within a further 30 days. If you own a company workspace, transfer ownership to another member or ask us to delete the
+          whole company. You can also remove individual messages and files yourself in the app, and leave a company from
           your profile.
         </P>
 
