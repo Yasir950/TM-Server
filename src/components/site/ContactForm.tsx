@@ -19,8 +19,9 @@ export function ContactFormFromUrl() {
 }
 
 // Posts to /api/contact, which saves the request and emails it to the team
-export default function ContactForm({ initialKind = "general" }: { initialKind?: "sales" | "general" }) {
-  const [f, setF] = useState({ kind: initialKind as string, name: "", email: "", company: "", team_size: "", message: "", website: "" });
+// `initialMessage` prefills the message (the account deletion page uses it)
+export default function ContactForm({ initialKind = "general", initialMessage = "" }: { initialKind?: "sales" | "general"; initialMessage?: string }) {
+  const [f, setF] = useState({ kind: initialKind as string, name: "", email: "", company: "", team_size: "", message: initialMessage, website: "" });
   const [state, setState] = useState<"idle" | "sending" | "sent">("idle");
   const [error, setError] = useState("");
 

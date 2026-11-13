@@ -6,21 +6,33 @@
     "version": "0.1.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
+    "icon": "./assets/icon.png",
     "ios": {
       "bundleIdentifier": "app.workchime.mobile",
       "supportsTablet": true,
-      "deploymentTarget": "15.1",
       "entitlements": {
-        "com.apple.security.application-groups": ["group.app.workchime.mobile"]
+        "com.apple.security.application-groups": [
+          "group.app.workchime.mobile"
+        ]
       },
       "infoPlist": {
-        "UIBackgroundModes": ["audio", "voip", "remote-notification"],
+        "UIBackgroundModes": [
+          "audio",
+          "voip",
+          "remote-notification"
+        ],
         "RTCAppGroupIdentifier": "group.app.workchime.mobile",
         "RTCScreenSharingExtension": "app.workchime.mobile.broadcast"
-      }
+      },
+      "bitcode": false
     },
     "android": {
       "package": "app.workchime.mobile",
+      "googleServicesFile": "./google-services.json",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      },
       "permissions": [
         "android.permission.RECORD_AUDIO",
         "android.permission.CAMERA",
@@ -31,18 +43,73 @@
         "android.permission.FOREGROUND_SERVICE_MICROPHONE",
         "android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION",
         "android.permission.USE_FULL_SCREEN_INTENT",
-        "android.permission.POST_NOTIFICATIONS"
+        "android.permission.POST_NOTIFICATIONS",
+        "android.permission.ACCESS_NETWORK_STATE",
+        "android.permission.INTERNET",
+        "android.permission.SYSTEM_ALERT_WINDOW",
+        "android.permission.BLUETOOTH"
       ]
     },
     "plugins": [
       "expo-router",
-      ["expo-notifications", { "color": "#0f2d4d", "enableBackgroundRemoteNotifications": true }],
-      ["expo-image-picker", { "photosPermission": "Workchime shares the photos and videos you pick in conversations.", "cameraPermission": "Workchime uses the camera for photos, video clips and Meet calls.", "microphonePermission": "Workchime uses the microphone for voice clips, video clips and Meet calls." }],
-      ["expo-audio", { "microphonePermission": "Workchime uses the microphone for voice clips and Meet calls." }],
-      ["@config-plugins/react-native-webrtc", { "cameraPermission": "Workchime uses the camera for video in Meet calls.", "microphonePermission": "Workchime uses the microphone for Meet calls." }],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#0f2d4d",
+          "enableBackgroundRemoteNotifications": true
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Workchime shares the photos and videos you pick in conversations.",
+          "cameraPermission": "Workchime uses the camera for photos, video clips and Meet calls.",
+          "microphonePermission": "Workchime uses the microphone for voice clips, video clips and Meet calls."
+        }
+      ],
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Workchime uses the microphone for voice clips and Meet calls."
+        }
+      ],
+      [
+        "@config-plugins/react-native-webrtc",
+        {
+          "cameraPermission": "Workchime uses the camera for video in Meet calls.",
+          "microphonePermission": "Workchime uses the microphone for Meet calls."
+        }
+      ],
       "@bacons/apple-targets",
       "./plugins/withVoip"
     ],
-    "experiments": { "typedRoutes": false }
+    "experiments": {
+      "typedRoutes": false
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "build": {
+          "experimental": {
+            "ios": {
+              "appExtensions": [
+                {
+                  "bundleIdentifier": "app.workchime.mobile.broadcast",
+                  "targetName": "WorkchimeBroadcast",
+                  "entitlements": {
+                    "com.apple.security.application-groups": [
+                      "group.app.workchime.mobile"
+                    ]
+                  }
+                }
+              ]
+            }
+          }
+        },
+        "projectId": "5c46628c-597f-4b08-b559-2c4728a80310"
+      }
+    },
+    "owner": "yasirabbas123"
   }
 }

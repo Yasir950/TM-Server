@@ -150,7 +150,11 @@ export function Footer() {
       <div className="border-t border-zinc-100">
         <div className="mx-auto flex max-w-7xl flex-col gap-2 px-4 py-6 text-xs text-zinc-500 sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8">
           <span>© 2026 {APP_NAME}. All rights reserved.</span>
-          <span>Made for teams that work together.</span>
+          <nav className="flex gap-5">
+            <Link href="/privacy" className="transition hover:text-tm-blue">Privacy</Link>
+            <Link href="/delete-account" className="transition hover:text-tm-blue">Delete account</Link>
+            <Link href="/contact" className="transition hover:text-tm-blue">Contact</Link>
+          </nav>
         </div>
       </div>
     </footer>

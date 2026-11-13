@@ -9,3 +9,5 @@ android/
 *.p12
 *.key
 *.mobileprovision
+play-service-account.json
+google-services.json

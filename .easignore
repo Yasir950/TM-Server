@@ -1,0 +1,31 @@
+# Files left out of EAS Build uploads (mobile app). When this file exists EAS ignores every .gitignore,
+# so it repeats their rules. Only mobile/ is built; the web app, desktop app and their outputs stay home.
+node_modules/
+.git/
+.next/
+.vercel/
+.github/
+.vscode/
+desktop/
+public/
+src/
+supabase/
+*.tsbuildinfo
+*.log
+
+# secrets (the app's EXPO_PUBLIC_* values come from EAS environment variables)
+.env*
+!.env.example
+*.pem
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+mobile/play-service-account.json
+
+# mobile build outputs
+mobile/.expo/
+mobile/dist/
+mobile/ios/
+mobile/android/
